@@ -526,3 +526,32 @@ ${questionTemplate}
 Where `successTemplate` goes from question on which it's answer at
 
 And `questionTemplate` is next question's
+
+# Ai service
+
+For now, it's a mock service, but we can shape interface
+
+```typescript
+AiService(
+  rephraseQuestion(question)
+  rephraseCompletion(text)
+  combineSuccessWithQuestion(
+    success,
+    question
+  )
+  combineFailWithQuestion(
+    fail,
+    question
+  )
+  extractData(text): JSON // In this JSON data should be stored by dataKey
+)
+```
+
+Logic is following:
+
+1. On initial message first question are issued and it's rephrased using `rephraseQuestion`
+2. In response if `extractData` are successfully extracts meaningful data, success of current question and question text of next question are combined (and rephrased)
+3. If can't `extractData`, the fail of current question are issued and question are combined and repeated
+4. If question with `final` flag, the `successTemplate` are rephrased using `rephraseCompletion`
+
+For now, for mocking purposes combine messages with just an empty newline. If message are just rephrased, just return passed text

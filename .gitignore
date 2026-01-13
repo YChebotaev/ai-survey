@@ -170,3 +170,4 @@ vite.config.ts.timestamp-*
 # User ignores:
 
 /data
+/test-data

@@ -6,6 +6,27 @@ import swaggerUiPlugin from "@fastify/swagger-ui";
 import type { Logger } from "pino";
 import type { Runnable } from "../types";
 import { plugins } from "./fastify";
+import {
+  IamService,
+  InviteService,
+  ProjectsService,
+  SurveySessionService,
+  AiService,
+} from "../services";
+import {
+  AccountsRepository,
+  UsersRepository,
+  AccountMembershipsRepository,
+  AccountInvitesRepository,
+  ProjectsRepository,
+  ProjectMembershipsRepository,
+  SurveysRepository,
+  QuestionTemplatesRepository,
+  SurveySessionsRepository,
+  SessionQuestionsRepository,
+  SessionAnswersRepository,
+  SessionReportsRepository,
+} from "../repositories";
 
 export type AppStartArgs = [{ host: string; port: number }];
 
@@ -15,10 +36,22 @@ export type AppConfig = {
   cors?: boolean;
   swagger?: boolean;
   logger: Logger;
+  accountsRepository: AccountsRepository;
+  usersRepository: UsersRepository;
+  accountMembershipsRepository: AccountMembershipsRepository;
+  accountInvitesRepository: AccountInvitesRepository;
+  projectsRepository: ProjectsRepository;
+  projectMembershipsRepository: ProjectMembershipsRepository;
+  surveysRepository: SurveysRepository;
+  questionTemplatesRepository: QuestionTemplatesRepository;
+  surveySessionsRepository: SurveySessionsRepository;
+  sessionQuestionsRepository: SessionQuestionsRepository;
+  sessionAnswersRepository: SessionAnswersRepository;
+  sessionReportsRepository: SessionReportsRepository;
 };
 
 export class App implements Runnable<AppStartArgs, []> {
-  private readonly fastify: FastifyInstance;
+  public readonly fastify: FastifyInstance;
   private readonly logger: Logger;
   private readonly _ready: Promise<void>;
 
@@ -129,7 +162,72 @@ export class App implements Runnable<AppStartArgs, []> {
   }
 
   private async initializePlugins(config: AppConfig) {
-    // Plugins will be registered here
+    const {
+      accountsRepository,
+      usersRepository,
+      accountMembershipsRepository,
+      accountInvitesRepository,
+      projectsRepository,
+      projectMembershipsRepository,
+      surveysRepository,
+      questionTemplatesRepository,
+      surveySessionsRepository,
+      sessionQuestionsRepository,
+      sessionAnswersRepository,
+      sessionReportsRepository,
+      logger,
+    } = config;
+
+    const iamService = new IamService({
+      accountsRepository,
+      usersRepository,
+      accountMembershipsRepository,
+      logger,
+    });
+
+    const inviteService = new InviteService({
+      accountInvitesRepository,
+      logger,
+    });
+
+    const projectsService = new ProjectsService({
+      projectsRepository,
+      projectMembershipsRepository,
+      surveysRepository,
+      questionTemplatesRepository,
+      logger,
+    });
+
+    const aiService = new AiService({
+      logger,
+    });
+
+    const surveySessionService = new SurveySessionService({
+      surveysRepository,
+      questionTemplatesRepository,
+      surveySessionsRepository,
+      sessionQuestionsRepository,
+      sessionAnswersRepository,
+      sessionReportsRepository,
+      aiService,
+      logger,
+    });
+
+    await this.fastify.register(plugins.iamPlugin as any, {
+      iamService,
+      logger,
+    });
+
+    await this.fastify.register(plugins.projectsPlugin as any, {
+      projectsService,
+      logger,
+    });
+
+    await this.fastify.register(plugins.surveyPlugin as any, {
+      surveySessionService,
+      aiService,
+      logger,
+    });
   }
 
   private async initializePost({ swagger }: Pick<AppConfig, "swagger">) {

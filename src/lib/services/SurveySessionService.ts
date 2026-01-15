@@ -281,7 +281,15 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         
         if (questionTemplate) {
           const reportData = JSON.parse(report.data);
+          
+          // Store extracted data
           reportData[questionTemplate.dataKey] = JSON.parse(answerData);
+          
+          // Store raw input from user (not from AI)
+          if (!reportData._rawInputs) {
+            reportData._rawInputs = {};
+          }
+          reportData._rawInputs[questionTemplate.dataKey] = answerText;
 
           await this.sessionReportsRepository.updateBySessionId(
             sessionId,
@@ -385,6 +393,58 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       this.logger.error(error, "Failed to get survey");
 
       throw error;
+    }
+  }
+
+  public async getConversationHistory(
+    sessionId: number,
+  ): Promise<Array<{ question: string; answer: string }>> {
+    try {
+      const questions = await this.sessionQuestionsRepository.findBySessionId(sessionId);
+      const answers = await this.sessionAnswersRepository.findBySessionId(sessionId);
+
+      const conversation: Array<{ question: string; answer: string }> = [];
+
+      // Match questions and answers by order (they should be in chronological order)
+      for (let i = 0; i < questions.length; i++) {
+        const question = questions[i];
+        const answer = answers[i];
+
+        if (question && answer) {
+          conversation.push({
+            question: question.questionText,
+            answer: answer.answerText,
+          });
+        }
+      }
+
+      return conversation;
+    } catch (error) {
+      this.logger.error(error, "Failed to get conversation history");
+
+      return [];
+    }
+  }
+
+  public async getCurrentReportData(sessionId: number): Promise<Record<string, any> | null> {
+    try {
+      const report = await this.sessionReportsRepository.findBySessionId(sessionId);
+
+      if (!report) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(report.data);
+      } catch (error) {
+        this.logger.error({ error, sessionId }, "Failed to parse report data");
+
+        return null;
+      }
+    } catch (error) {
+      this.logger.error(error, "Failed to get current report data");
+
+      return null;
     }
   }
 }

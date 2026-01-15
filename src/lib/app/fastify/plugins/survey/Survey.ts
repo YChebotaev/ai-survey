@@ -49,6 +49,7 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
 
         const reformulatedQuestion = await this.aiService.rephraseQuestion({
           question: question.questionTemplate,
+          // Initial question - no data state or conversation yet
         });
 
         return reply.code(200).send({
@@ -105,17 +106,52 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           return reply.code(404).send({ error: "Question not found" });
         }
 
+        // Get current data state and conversation history
+        const currentDataState = await this.surveySessionService.getCurrentReportData(sessionId);
+        const previousConversation = await this.surveySessionService.getConversationHistory(
+          sessionId,
+        );
+
         // Extract data using AI service
-        const extractedData = await this.aiService.extractData({
+        const extractDataArgs: {
+          text: string;
+          dataKey: string;
+          currentDataState?: Record<string, any>;
+          previousConversation?: Array<{ question: string; answer: string }>;
+        } = {
           text: answerText,
           dataKey: questionTemplate.dataKey,
-        });
+        };
+
+        if (currentDataState) {
+          extractDataArgs.currentDataState = currentDataState;
+        }
+
+        if (previousConversation.length > 0) {
+          extractDataArgs.previousConversation = previousConversation;
+        }
+
+        const extractedData = await this.aiService.extractData(extractDataArgs);
 
         if (!extractedData) {
           // If extraction failed, combine fail template with question and repeat
-          const reformulatedQuestion = await this.aiService.rephraseQuestion({
+          const rephraseQuestionArgs: {
+            question: string;
+            currentDataState?: Record<string, any>;
+            previousConversation?: Array<{ question: string; answer: string }>;
+          } = {
             question: questionTemplate.questionTemplate,
-          });
+          };
+
+          if (currentDataState) {
+            rephraseQuestionArgs.currentDataState = currentDataState;
+          }
+
+          if (previousConversation.length > 0) {
+            rephraseQuestionArgs.previousConversation = previousConversation;
+          }
+
+          const reformulatedQuestion = await this.aiService.rephraseQuestion(rephraseQuestionArgs);
 
           const failMessage = await this.aiService.combineFailWithQuestion({
             fail: questionTemplate.failTemplate,
@@ -178,10 +214,30 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           });
         }
 
-        // Rephrase the next question
-        const reformulatedNextQuestion = await this.aiService.rephraseQuestion({
+        // Get updated data state after storing the answer
+        const updatedDataState = await this.surveySessionService.getCurrentReportData(sessionId);
+        const updatedConversation = await this.surveySessionService.getConversationHistory(
+          sessionId,
+        );
+
+        // Rephrase the next question with context
+        const rephraseNextQuestionArgs: {
+          question: string;
+          currentDataState?: Record<string, any>;
+          previousConversation?: Array<{ question: string; answer: string }>;
+        } = {
           question: nextQuestion.questionTemplate,
-        });
+        };
+
+        if (updatedDataState) {
+          rephraseNextQuestionArgs.currentDataState = updatedDataState;
+        }
+
+        if (updatedConversation.length > 0) {
+          rephraseNextQuestionArgs.previousConversation = updatedConversation;
+        }
+
+        const reformulatedNextQuestion = await this.aiService.rephraseQuestion(rephraseNextQuestionArgs);
 
         // Combine success template with next question
         const combinedMessage = await this.aiService.combineSuccessWithQuestion({

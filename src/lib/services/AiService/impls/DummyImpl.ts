@@ -1,43 +1,36 @@
 import { type Logger } from "pino";
-import { ServiceBase } from "./ServiceBase";
+import type {
+  RephraseQuestionArgs,
+  RephraseCompletionArgs,
+  CombineSuccessWithQuestionArgs,
+  CombineFailWithQuestionArgs,
+  ExtractDataArgs,
+} from "../types";
 
-export type AiServiceConfig = {
+export type DummyImplConfig = {
   logger: Logger;
 };
 
-export type RephraseQuestionArgs = {
-  question: string;
-};
+export class DummyImpl {
+  private readonly logger: Logger;
 
-export type RephraseCompletionArgs = {
-  text: string;
-};
-
-export type CombineSuccessWithQuestionArgs = {
-  success: string;
-  question: string;
-};
-
-export type CombineFailWithQuestionArgs = {
-  fail: string;
-  question: string;
-};
-
-export type ExtractDataArgs = {
-  text: string;
-  dataKey: string;
-};
-
-export class AiService extends ServiceBase<AiServiceConfig> {
-  constructor({ logger }: AiServiceConfig) {
-    super(logger, { logger });
+  constructor({ logger }: DummyImplConfig) {
+    this.logger = logger;
   }
 
-  public async rephraseQuestion({ question }: RephraseQuestionArgs): Promise<string> {
+  public async rephraseQuestion({
+    question,
+    currentDataState,
+    previousConversation,
+  }: RephraseQuestionArgs): Promise<string> {
     try {
-      this.logger.info({ question }, "Rephrasing question");
+      this.logger.info(
+        { question, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        "Rephrasing question",
+      );
 
       // For now, mock implementation - just return the question as-is
+      // Dummy implementation accepts params but does nothing with them
       return question;
     } catch (error) {
       this.logger.error(error, "Failed to rephrase question");
@@ -91,12 +84,20 @@ export class AiService extends ServiceBase<AiServiceConfig> {
     }
   }
 
-  public async extractData({ text, dataKey }: ExtractDataArgs): Promise<Record<string, any> | null> {
+  public async extractData({
+    text,
+    dataKey,
+    currentDataState,
+    previousConversation,
+  }: ExtractDataArgs): Promise<Record<string, any> | null> {
     try {
-      this.logger.info({ text, dataKey }, "Extracting data");
+      this.logger.info(
+        { text, dataKey, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        "Extracting data",
+      );
 
       // For now, mock implementation - return data (will be stored by dataKey in report)
-      // In real implementation, this would use AI to extract meaningful data
+      // Dummy implementation accepts params but does nothing with them
       return {
         text,
       };

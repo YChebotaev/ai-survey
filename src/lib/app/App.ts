@@ -48,6 +48,11 @@ export type AppConfig = {
   sessionQuestionsRepository: SessionQuestionsRepository;
   sessionAnswersRepository: SessionAnswersRepository;
   sessionReportsRepository: SessionReportsRepository;
+  iamService: IamService;
+  inviteService: InviteService;
+  projectsService: ProjectsService;
+  aiService: AiService;
+  surveySessionService: SurveySessionService;
 };
 
 export class App implements Runnable<AppStartArgs, []> {
@@ -163,55 +168,12 @@ export class App implements Runnable<AppStartArgs, []> {
 
   private async initializePlugins(config: AppConfig) {
     const {
-      accountsRepository,
-      usersRepository,
-      accountMembershipsRepository,
-      accountInvitesRepository,
-      projectsRepository,
-      projectMembershipsRepository,
-      surveysRepository,
-      questionTemplatesRepository,
-      surveySessionsRepository,
-      sessionQuestionsRepository,
-      sessionAnswersRepository,
-      sessionReportsRepository,
+      iamService,
+      projectsService,
+      aiService,
+      surveySessionService,
       logger,
     } = config;
-
-    const iamService = new IamService({
-      accountsRepository,
-      usersRepository,
-      accountMembershipsRepository,
-      logger,
-    });
-
-    const inviteService = new InviteService({
-      accountInvitesRepository,
-      logger,
-    });
-
-    const projectsService = new ProjectsService({
-      projectsRepository,
-      projectMembershipsRepository,
-      surveysRepository,
-      questionTemplatesRepository,
-      logger,
-    });
-
-    const aiService = new AiService({
-      logger,
-    });
-
-    const surveySessionService = new SurveySessionService({
-      surveysRepository,
-      questionTemplatesRepository,
-      surveySessionsRepository,
-      sessionQuestionsRepository,
-      sessionAnswersRepository,
-      sessionReportsRepository,
-      aiService,
-      logger,
-    });
 
     await this.fastify.register(plugins.iamPlugin as any, {
       iamService,

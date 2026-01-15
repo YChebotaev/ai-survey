@@ -60,4 +60,12 @@ export class SessionQuestionsRepository extends RepositoryBase<SessionQuestionsR
 
     return result as SessionQuestion | undefined;
   }
+
+  public async findBySessionId(sessionId: SessionQuestion["sessionId"]) {
+    const results = await this.db(this.tableName)
+      .where({ sessionId, deleted: false })
+      .orderBy("createdAt", "asc");
+
+    return results as SessionQuestion[];
+  }
 }

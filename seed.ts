@@ -13,7 +13,8 @@ import { IamService, ProjectsService } from "./src/lib/services";
 
 const logger = pino();
 
-const EXTERNAL_ID = "demo-survey";
+const EXTERNAL_ID_EN = "demo-survey-en";
+const EXTERNAL_ID_RU = "demo-survey-ru";
 
 const seed = async () => {
   try {
@@ -22,13 +23,17 @@ const seed = async () => {
     const db = await createDb();
     logger.info("Database initialized");
 
-    // Check if survey already exists
-    const existingSurvey = await db("surveys")
-      .where({ externalId: EXTERNAL_ID, deleted: false })
+    // Check if surveys already exist
+    const existingSurveyEn = await db("surveys")
+      .where({ externalId: EXTERNAL_ID_EN, deleted: false })
       .first();
 
-    if (existingSurvey) {
-      logger.info({ externalId: EXTERNAL_ID }, "Survey already exists, skipping seed");
+    const existingSurveyRu = await db("surveys")
+      .where({ externalId: EXTERNAL_ID_RU, deleted: false })
+      .first();
+
+    if (existingSurveyEn && existingSurveyRu) {
+      logger.info({ externalIdEn: EXTERNAL_ID_EN, externalIdRu: EXTERNAL_ID_RU }, "Surveys already exist, skipping seed");
       await db.destroy();
       return;
     }
@@ -122,11 +127,11 @@ const seed = async () => {
     });
     logger.info({ projectId: project.id }, "Project created");
 
-    // Create survey with questions
-    const survey = await projectsService.createSurvey({
+    // Create English survey with questions
+    const surveyEn = await projectsService.createSurvey({
       accountId: account.id,
       projectId: project.id,
-      externalId: EXTERNAL_ID,
+      externalId: EXTERNAL_ID_EN,
       lang: "en",
       questionTemplates: [
         {
@@ -158,10 +163,48 @@ const seed = async () => {
         },
       ],
     });
-    logger.info({ surveyId: survey.id, externalId: EXTERNAL_ID }, "Survey created");
+    logger.info({ surveyId: surveyEn.id, externalId: EXTERNAL_ID_EN, lang: "en" }, "English survey created");
+
+    // Create Russian survey with questions
+    const surveyRu = await projectsService.createSurvey({
+      accountId: account.id,
+      projectId: project.id,
+      externalId: EXTERNAL_ID_RU,
+      lang: "ru",
+      questionTemplates: [
+        {
+          order: 1,
+          dataKey: "name",
+          questionTemplate: "Как вас зовут?",
+          successTemplate: "Спасибо!",
+          failTemplate: "Пожалуйста, укажите ваше имя.",
+          final: false,
+          type: "freeform",
+        },
+        {
+          order: 2,
+          dataKey: "email",
+          questionTemplate: "Какой у вас email?",
+          successTemplate: "Отлично!",
+          failTemplate: "Пожалуйста, укажите действительный email.",
+          final: false,
+          type: "freeform",
+        },
+        {
+          order: 3,
+          dataKey: "feedback",
+          questionTemplate: "Есть ли отзывы?",
+          successTemplate: "Спасибо за ваш отзыв!",
+          failTemplate: "Пожалуйста, оставьте отзыв.",
+          final: true,
+          type: "freeform",
+        },
+      ],
+    });
+    logger.info({ surveyId: surveyRu.id, externalId: EXTERNAL_ID_RU, lang: "ru" }, "Russian survey created");
 
     logger.info("Seed completed successfully");
-    logger.info({ externalId: EXTERNAL_ID }, "Demo survey is ready");
+    logger.info({ externalIdEn: EXTERNAL_ID_EN, externalIdRu: EXTERNAL_ID_RU }, "Demo surveys are ready");
 
     await db.destroy();
   } catch (error: any) {

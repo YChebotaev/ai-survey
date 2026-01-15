@@ -26,7 +26,8 @@ export type CombineFailWithQuestionArgs = {
 
 export type ExtractDataArgs = {
   text: string;
-  dataKey: string;
+  currentQuestionDataKey: string;
+  allDataKeys: string[];
   lang: SupportedLanguage;
   currentDataState?: Record<string, any>;
   previousConversation?: Array<{ question: string; answer: string }>;

@@ -2,6 +2,7 @@ import fastifyPlugin from "fastify-plugin";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Logger } from "pino";
 import type { SupportedLanguage } from "../../../../types";
+import type { QuestionTemplate } from "../../../../repositories";
 import { BaseFastifyPlugin, type PluginBaseOptions } from "../../plugin-base";
 import { SurveySessionService, AiService } from "../../../../services";
 
@@ -126,16 +127,24 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           sessionId,
         );
 
-        // Extract data using AI service
+        // Get all question templates to extract all possible dataKeys
+        const allQuestionTemplates = await this.surveySessionService.getAllQuestionTemplatesByProjectId(
+          survey.projectId,
+        );
+        const allDataKeys = allQuestionTemplates.map((qt) => qt.dataKey);
+
+        // Extract data using AI service - extract ALL possible data
         const extractDataArgs: {
           text: string;
-          dataKey: string;
+          currentQuestionDataKey: string;
+          allDataKeys: string[];
           lang: SupportedLanguage;
           currentDataState?: Record<string, any>;
           previousConversation?: Array<{ question: string; answer: string }>;
         } = {
           text: answerText,
-          dataKey: questionTemplate.dataKey,
+          currentQuestionDataKey: questionTemplate.dataKey,
+          allDataKeys,
           lang,
         };
 
@@ -151,8 +160,6 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
 
         if (!extractedData) {
           // If extraction failed, combine fail template with question and repeat
-          const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
-
           const rephraseQuestionArgs: {
             question: string;
             lang: SupportedLanguage;
@@ -211,20 +218,50 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           });
         }
 
-        // Get the next question BEFORE updating the session state
-        const nextOrder = currentOrder + 1;
-        const nextQuestion = await this.surveySessionService.getQuestionByProjectIdAndOrder(
-          survey.projectId,
-          nextOrder,
-        );
-
-        // Now store the answer (this will update session state)
+        // Now store the answer (this will update session state and store all extracted data)
         const answer = await this.surveySessionService.addQuestionAnswer({
           sessionId,
           questionId: questionTemplate.id,
           answerText,
           answerData,
         });
+
+        // Get updated data state after storing the answer
+        const updatedDataState = await this.surveySessionService.getCurrentReportData(sessionId);
+        
+        // Find the next question that doesn't have data yet
+        let nextQuestion: QuestionTemplate | null = null;
+        let nextOrder = currentOrder + 1;
+        const maxOrder = Math.max(...allQuestionTemplates.map((qt) => qt.order));
+        
+        while (nextOrder <= maxOrder) {
+          const candidateQuestion = await this.surveySessionService.getQuestionByProjectIdAndOrder(
+            survey.projectId,
+            nextOrder,
+          );
+
+          if (!candidateQuestion) {
+            break;
+          }
+
+          // Check if this question's dataKey already has data
+          const hasData =
+            updatedDataState &&
+            candidateQuestion.dataKey in updatedDataState &&
+            updatedDataState[candidateQuestion.dataKey] != null &&
+            !(
+              typeof updatedDataState[candidateQuestion.dataKey] === "object" &&
+              Object.keys(updatedDataState[candidateQuestion.dataKey]).length === 0
+            );
+
+          if (!hasData) {
+            nextQuestion = candidateQuestion;
+            break;
+          }
+
+          // This question's data already exists, skip it and move to next
+          nextOrder++;
+        }
 
         // If there's no next question, end the session
         if (!nextQuestion) {
@@ -236,44 +273,95 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           });
         }
 
-        // Get updated data state after storing the answer
-        const updatedDataState = await this.surveySessionService.getCurrentReportData(sessionId);
+        // Update session state to reflect the skipped questions
+        await this.surveySessionService.updateSessionOrder(sessionId, nextOrder);
+
         const updatedConversation = await this.surveySessionService.getConversationHistory(
           sessionId,
         );
 
-        // Rephrase the next question with context
-        const rephraseNextQuestionArgs: {
-          question: string;
-          lang: SupportedLanguage;
-          currentDataState?: Record<string, any>;
-          previousConversation?: Array<{ question: string; answer: string }>;
-        } = {
-          question: nextQuestion.questionTemplate,
-          lang,
-        };
+        // Check if we skipped any questions and acknowledge it
+        const skippedCount = nextOrder - (currentOrder + 1);
+        let questionToShow = nextQuestion.questionTemplate;
+        let hasAcknowledgedSkipped = false;
 
-        if (updatedDataState) {
-          rephraseNextQuestionArgs.currentDataState = updatedDataState;
+        if (skippedCount > 0 && updatedDataState) {
+          // Acknowledge that some data was already provided
+          const skippedDataKeys = allQuestionTemplates
+            .filter((qt) => qt.order > currentOrder && qt.order < nextOrder)
+            .map((qt) => qt.dataKey)
+            .filter((key) => updatedDataState[key] != null);
+
+          if (skippedDataKeys.length > 0) {
+            // Use AI to acknowledge the skipped data and combine with success template
+            // We combine success + acknowledgment + question in one step
+            // Combine success template with acknowledgment and question
+            const combinedAcknowledgePrompt = `${questionTemplate.successTemplate}\n\nThe user has already provided information for: ${skippedDataKeys.join(", ")}. Acknowledge this briefly and naturally, then ask the next question: ${nextQuestion.questionTemplate}`;
+            
+            const acknowledgeArgs: {
+              question: string;
+              lang: SupportedLanguage;
+              currentDataState?: Record<string, any>;
+              previousConversation?: Array<{ question: string; answer: string }>;
+            } = {
+              question: combinedAcknowledgePrompt,
+              lang,
+            };
+
+            if (updatedDataState) {
+              acknowledgeArgs.currentDataState = updatedDataState;
+            }
+
+            if (updatedConversation.length > 0) {
+              acknowledgeArgs.previousConversation = updatedConversation;
+            }
+
+            const acknowledgedQuestion = await this.aiService.rephraseQuestion(acknowledgeArgs);
+            
+            questionToShow = acknowledgedQuestion;
+            hasAcknowledgedSkipped = true;
+          }
         }
 
-        if (updatedConversation.length > 0) {
-          rephraseNextQuestionArgs.previousConversation = updatedConversation;
+        let finalMessage: string;
+
+        if (hasAcknowledgedSkipped) {
+          // If we already acknowledged skipped data and combined with success template, use it directly
+          finalMessage = questionToShow;
+        } else {
+          // Normal flow: rephrase question and combine with success template
+          const rephraseNextQuestionArgs: {
+            question: string;
+            lang: SupportedLanguage;
+            currentDataState?: Record<string, any>;
+            previousConversation?: Array<{ question: string; answer: string }>;
+          } = {
+            question: questionToShow,
+            lang,
+          };
+
+          if (updatedDataState) {
+            rephraseNextQuestionArgs.currentDataState = updatedDataState;
+          }
+
+          if (updatedConversation.length > 0) {
+            rephraseNextQuestionArgs.previousConversation = updatedConversation;
+          }
+
+          const reformulatedNextQuestion = await this.aiService.rephraseQuestion(rephraseNextQuestionArgs);
+
+          // Combine success template with next question
+          finalMessage = await this.aiService.combineSuccessWithQuestion({
+            success: questionTemplate.successTemplate,
+            question: reformulatedNextQuestion,
+            lang,
+          });
         }
-
-        const reformulatedNextQuestion = await this.aiService.rephraseQuestion(rephraseNextQuestionArgs);
-
-        // Combine success template with next question
-        const combinedMessage = await this.aiService.combineSuccessWithQuestion({
-          success: questionTemplate.successTemplate,
-          question: reformulatedNextQuestion,
-          lang,
-        });
 
         logger.info({ sessionId, answerId: answer.id }, "Answer received and next question sent");
 
         return reply.code(200).send({
-          message: combinedMessage,
+          message: finalMessage,
           sessionId,
         });
       } catch (error: any) {

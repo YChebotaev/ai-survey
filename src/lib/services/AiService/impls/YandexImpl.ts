@@ -244,23 +244,30 @@ export class YandexImpl {
 
   public async extractData({
     text,
-    dataKey,
+    currentQuestionDataKey,
+    allDataKeys,
     lang,
     currentDataState,
     previousConversation,
   }: ExtractDataArgs): Promise<Record<string, any> | null> {
     try {
       this.logger.info(
-        { text, dataKey, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { text, currentQuestionDataKey, allDataKeys, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Extracting data",
       );
 
       const hasDataState = !!(currentDataState && Object.keys(currentDataState).length > 0);
       const hasConversation = !!(previousConversation && previousConversation.length > 0);
 
-      const instructions = aiPrompts[lang].extractData(text, dataKey, hasDataState, hasConversation);
+      const instructions = aiPrompts[lang].extractData(
+        text,
+        currentQuestionDataKey,
+        allDataKeys,
+        hasDataState,
+        hasConversation,
+      );
 
-      let input = `Extract meaningful data from this text and return as JSON with key "${dataKey}": ${text}`;
+      let input = `Extract meaningful data from this text. Current question is asking for "${currentQuestionDataKey}", but extract ALL data that matches any of these keys: [${allDataKeys.join(", ")}]. Text: ${text}`;
 
       // Include current data state if available
       if (currentDataState && Object.keys(currentDataState).length > 0) {
@@ -289,7 +296,7 @@ export class YandexImpl {
 
       if (!outputText) {
         this.logger.warn(
-          { text, dataKey },
+          { text, currentQuestionDataKey, allDataKeys },
           "No output from AI for data extraction",
         );
 
@@ -300,7 +307,7 @@ export class YandexImpl {
 
       if (!normalizedJson) {
         this.logger.error(
-          { outputText, text, dataKey },
+          { outputText, text, currentQuestionDataKey, allDataKeys },
           "Failed to normalize JSON string from AI response",
         );
 
@@ -313,29 +320,44 @@ export class YandexImpl {
         // Check if extracted data is null or empty object
         if (extractedData == null || (typeof extractedData === "object" && Object.keys(extractedData).length === 0)) {
           this.logger.warn(
-            { text, dataKey, extractedData },
+            { text, currentQuestionDataKey, allDataKeys, extractedData },
             "Extracted data is null or empty object - will trigger fail branch",
           );
 
           return null;
         }
 
-        // Check if the dataKey field exists and is meaningful
-        if (extractedData[dataKey] == null || (typeof extractedData[dataKey] === "object" && Object.keys(extractedData[dataKey]).length === 0)) {
+        // Check if the currentQuestionDataKey field exists and is meaningful
+        // But also accept if ANY dataKey has meaningful data
+        const hasCurrentKeyData =
+          extractedData[currentQuestionDataKey] != null &&
+          !(typeof extractedData[currentQuestionDataKey] === "object" &&
+            Object.keys(extractedData[currentQuestionDataKey]).length === 0);
+
+        const hasAnyKeyData = allDataKeys.some(
+          (key) =>
+            extractedData[key] != null &&
+            !(typeof extractedData[key] === "object" && Object.keys(extractedData[key]).length === 0),
+        );
+
+        if (!hasCurrentKeyData && !hasAnyKeyData) {
           this.logger.warn(
-            { text, dataKey, extractedData },
-            "DataKey field is null or empty - will trigger fail branch",
+            { text, currentQuestionDataKey, allDataKeys, extractedData },
+            "No meaningful data extracted for any dataKey - will trigger fail branch",
           );
 
           return null;
         }
 
-        this.logger.info({ text, dataKey, extractedData }, "Data extracted");
+        this.logger.info(
+          { text, currentQuestionDataKey, allDataKeys, extractedData },
+          "Data extracted",
+        );
 
         return extractedData;
       } catch (parseError) {
         this.logger.error(
-          { parseError, normalizedJson, outputText, text, dataKey },
+          { parseError, normalizedJson, outputText, text, currentQuestionDataKey, allDataKeys },
           "Failed to parse normalized JSON",
         );
 

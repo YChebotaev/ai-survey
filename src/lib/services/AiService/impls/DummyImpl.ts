@@ -89,21 +89,22 @@ export class DummyImpl {
 
   public async extractData({
     text,
-    dataKey,
+    currentQuestionDataKey,
+    allDataKeys,
     lang,
     currentDataState,
     previousConversation,
   }: ExtractDataArgs): Promise<Record<string, any> | null> {
     try {
       this.logger.info(
-        { text, dataKey, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { text, currentQuestionDataKey, allDataKeys, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Extracting data",
       );
 
       // For now, mock implementation - return data (will be stored by dataKey in report)
       // Dummy implementation accepts params but does nothing with them
       return {
-        text,
+        [currentQuestionDataKey]: text,
       };
     } catch (error) {
       this.logger.error(error, "Failed to extract data");

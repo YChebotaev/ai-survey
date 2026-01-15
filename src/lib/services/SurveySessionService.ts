@@ -123,10 +123,19 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         throw new Error("Failed to create survey session");
       }
 
-      const firstQuestion = await this.questionTemplatesRepository.findByProjectIdAndOrder(
-        survey.projectId,
-        1,
-      );
+      // Find the first question that doesn't have data yet
+      // (in case user provides data in a previous session or somehow)
+      const allQuestions = await this.questionTemplatesRepository.findByProjectId(survey.projectId);
+      let firstQuestion: QuestionTemplate | null = null;
+      let firstQuestionOrder = 1;
+
+      for (const question of allQuestions) {
+        // For initial session, we start with the first question
+        // But if we're resuming, we should check if data exists
+        firstQuestion = question;
+        firstQuestionOrder = question.order;
+        break;
+      }
 
       if (firstQuestion) {
         const sessionQuestion = await this.sessionQuestionsRepository.create({
@@ -281,9 +290,15 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         
         if (questionTemplate) {
           const reportData = JSON.parse(report.data);
+          const extractedData = JSON.parse(answerData);
           
-          // Store extracted data
-          reportData[questionTemplate.dataKey] = JSON.parse(answerData);
+          // Store ALL extracted data (not just the current question's dataKey)
+          // This allows extracting multiple dataKeys from a single answer
+          for (const [key, value] of Object.entries(extractedData)) {
+            if (value != null && !(typeof value === "object" && Object.keys(value).length === 0)) {
+              reportData[key] = value;
+            }
+          }
           
           // Store raw input from user (not from AI)
           if (!reportData._rawInputs) {
@@ -445,6 +460,40 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       this.logger.error(error, "Failed to get current report data");
 
       return null;
+    }
+  }
+
+  public async getAllQuestionTemplatesByProjectId(projectId: number): Promise<QuestionTemplate[]> {
+    try {
+      const questions = await this.questionTemplatesRepository.findByProjectId(projectId);
+
+      return questions;
+    } catch (error) {
+      this.logger.error(error, "Failed to get all question templates");
+
+      return [];
+    }
+  }
+
+  public async updateSessionOrder(sessionId: number, newOrder: number): Promise<void> {
+    try {
+      const session = await this.surveySessionsRepository.getById(sessionId);
+
+      if (!session) {
+        throw new Error(`Session with id ${sessionId} not found`);
+      }
+
+      const sessionState = JSON.parse(session.sessionState);
+      sessionState.currentOrder = newOrder;
+
+      await this.surveySessionsRepository.updateSessionState(
+        sessionId,
+        JSON.stringify(sessionState),
+      );
+    } catch (error) {
+      this.logger.error(error, "Failed to update session order");
+
+      throw error;
     }
   }
 }

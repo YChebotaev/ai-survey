@@ -80,4 +80,12 @@ export class QuestionTemplatesRepository extends RepositoryBase<QuestionTemplate
 
     return result as QuestionTemplate | undefined;
   }
+
+  public async findByProjectId(projectId: number) {
+    const results = await this.db(this.tableName)
+      .where({ projectId, deleted: false })
+      .orderBy("order", "asc");
+
+    return results as QuestionTemplate[];
+  }
 }

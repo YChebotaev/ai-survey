@@ -15,6 +15,7 @@ const logger = pino();
 
 const EXTERNAL_ID_EN = "demo-survey-en";
 const EXTERNAL_ID_RU = "demo-survey-ru";
+const EXTERNAL_ID_SCRUM_RU = "demo-scrum-daily-ru";
 
 const seed = async () => {
   try {
@@ -32,10 +33,42 @@ const seed = async () => {
       .where({ externalId: EXTERNAL_ID_RU, deleted: false })
       .first();
 
-    if (existingSurveyEn && existingSurveyRu) {
-      logger.info({ externalIdEn: EXTERNAL_ID_EN, externalIdRu: EXTERNAL_ID_RU }, "Surveys already exist, skipping seed");
+    const existingScrumRu = await db("surveys")
+      .where({ externalId: EXTERNAL_ID_SCRUM_RU, deleted: false })
+      .first();
+
+    // Only skip if ALL surveys exist
+    if (existingSurveyEn && existingSurveyRu && existingScrumRu) {
+      logger.info(
+        {
+          externalIdEn: EXTERNAL_ID_EN,
+          externalIdRu: EXTERNAL_ID_RU,
+          externalIdScrumRu: EXTERNAL_ID_SCRUM_RU,
+        },
+        "All surveys already exist, skipping seed",
+      );
       await db.destroy();
       return;
+    }
+
+    // Log which surveys are missing
+    if (!existingSurveyEn) {
+      logger.info(
+        { externalId: EXTERNAL_ID_EN },
+        "English survey not found, will create",
+      );
+    }
+    if (!existingSurveyRu) {
+      logger.info(
+        { externalId: EXTERNAL_ID_RU },
+        "Russian survey not found, will create",
+      );
+    }
+    if (!existingScrumRu) {
+      logger.info(
+        { externalId: EXTERNAL_ID_SCRUM_RU },
+        "Scrum daily survey not found, will create",
+      );
     }
 
     // Initialize repositories
@@ -127,84 +160,149 @@ const seed = async () => {
     });
     logger.info({ projectId: project.id }, "Project created");
 
-    // Create English survey with questions
-    const surveyEn = await projectsService.createSurvey({
-      accountId: account.id,
-      projectId: project.id,
-      externalId: EXTERNAL_ID_EN,
-      lang: "en",
-      questionTemplates: [
-        {
-          order: 1,
-          dataKey: "name",
-          questionTemplate: "What is your name?",
-          successTemplate: "Thank you!",
-          failTemplate: "Please provide your name.",
-          final: false,
-          type: "freeform",
-        },
-        {
-          order: 2,
-          dataKey: "email",
-          questionTemplate: "What is your email?",
-          successTemplate: "Great!",
-          failTemplate: "Please provide a valid email.",
-          final: false,
-          type: "freeform",
-        },
-        {
-          order: 3,
-          dataKey: "feedback",
-          questionTemplate: "Any feedback?",
-          successTemplate: "Thank you for your feedback!",
-          failTemplate: "Please provide feedback.",
-          final: true,
-          type: "freeform",
-        },
-      ],
-    });
-    logger.info({ surveyId: surveyEn.id, externalId: EXTERNAL_ID_EN, lang: "en" }, "English survey created");
+    // Create English survey with questions (if it doesn't exist)
+    if (!existingSurveyEn) {
+      const surveyEn = await projectsService.createSurvey({
+        accountId: account.id,
+        projectId: project.id,
+        externalId: EXTERNAL_ID_EN,
+        lang: "en",
+        questionTemplates: [
+          {
+            order: 1,
+            dataKey: "name",
+            questionTemplate: "What is your name?",
+            successTemplate: "Thank you!",
+            failTemplate: "Please provide your name.",
+            final: false,
+            type: "freeform",
+          },
+          {
+            order: 2,
+            dataKey: "email",
+            questionTemplate: "What is your email?",
+            successTemplate: "Great!",
+            failTemplate: "Please provide a valid email.",
+            final: false,
+            type: "freeform",
+          },
+          {
+            order: 3,
+            dataKey: "feedback",
+            questionTemplate: "Any feedback?",
+            successTemplate: "Thank you for your feedback!",
+            failTemplate: "Please provide feedback.",
+            final: true,
+            type: "freeform",
+          },
+        ],
+      });
+      logger.info(
+        { surveyId: surveyEn.id, externalId: EXTERNAL_ID_EN, lang: "en" },
+        "English survey created",
+      );
+    }
 
-    // Create Russian survey with questions
-    const surveyRu = await projectsService.createSurvey({
-      accountId: account.id,
-      projectId: project.id,
-      externalId: EXTERNAL_ID_RU,
-      lang: "ru",
-      questionTemplates: [
+    // Create Russian survey with questions (if it doesn't exist)
+    if (!existingSurveyRu) {
+      const surveyRu = await projectsService.createSurvey({
+        accountId: account.id,
+        projectId: project.id,
+        externalId: EXTERNAL_ID_RU,
+        lang: "ru",
+        questionTemplates: [
+          {
+            order: 1,
+            dataKey: "name",
+            questionTemplate: "Как вас зовут?",
+            successTemplate: "Спасибо!",
+            failTemplate: "Пожалуйста, укажите ваше имя.",
+            final: false,
+            type: "freeform",
+          },
+          {
+            order: 2,
+            dataKey: "email",
+            questionTemplate: "Какой у вас email?",
+            successTemplate: "Отлично!",
+            failTemplate: "Пожалуйста, укажите действительный email.",
+            final: false,
+            type: "freeform",
+          },
+          {
+            order: 3,
+            dataKey: "feedback",
+            questionTemplate: "Есть ли отзывы?",
+            successTemplate: "Спасибо за ваш отзыв!",
+            failTemplate: "Пожалуйста, оставьте отзыв.",
+            final: true,
+            type: "freeform",
+          },
+        ],
+      });
+      logger.info(
+        { surveyId: surveyRu.id, externalId: EXTERNAL_ID_RU, lang: "ru" },
+        "Russian survey created",
+      );
+    }
+
+    // Create Russian Scrum daily survey (if it doesn't exist)
+    if (!existingScrumRu) {
+      const scrumSurveyRu = await projectsService.createSurvey({
+        accountId: account.id,
+        projectId: project.id,
+        externalId: EXTERNAL_ID_SCRUM_RU,
+        lang: "ru",
+        questionTemplates: [
+          {
+            order: 1,
+            dataKey: "yesterdayWork",
+            questionTemplate: "Что было сделано вчера?",
+            successTemplate: "Спасибо!",
+            failTemplate: "Пожалуйста, расскажите, что было сделано вчера.",
+            final: false,
+            type: "freeform",
+          },
+          {
+            order: 2,
+            dataKey: "todayPlan",
+            questionTemplate: "Что Вы планируете сделать сегодня?",
+            successTemplate: "Отлично!",
+            failTemplate:
+              "Пожалуйста, расскажите, что Вы планируете сделать сегодня.",
+            final: false,
+            type: "freeform",
+          },
+          {
+            order: 3,
+            dataKey: "roadblocks",
+            questionTemplate: "Есть ли какие-то препятствия впереди?",
+            successTemplate: "Спасибо за информацию!",
+            failTemplate: "Пожалуйста, укажите, есть ли препятствия или нет.",
+            final: true,
+            type: "freeform",
+          },
+        ],
+      });
+      logger.info(
         {
-          order: 1,
-          dataKey: "name",
-          questionTemplate: "Как вас зовут?",
-          successTemplate: "Спасибо!",
-          failTemplate: "Пожалуйста, укажите ваше имя.",
-          final: false,
-          type: "freeform",
+          surveyId: scrumSurveyRu.id,
+          externalId: EXTERNAL_ID_SCRUM_RU,
+          lang: "ru",
         },
-        {
-          order: 2,
-          dataKey: "email",
-          questionTemplate: "Какой у вас email?",
-          successTemplate: "Отлично!",
-          failTemplate: "Пожалуйста, укажите действительный email.",
-          final: false,
-          type: "freeform",
-        },
-        {
-          order: 3,
-          dataKey: "feedback",
-          questionTemplate: "Есть ли отзывы?",
-          successTemplate: "Спасибо за ваш отзыв!",
-          failTemplate: "Пожалуйста, оставьте отзыв.",
-          final: true,
-          type: "freeform",
-        },
-      ],
-    });
-    logger.info({ surveyId: surveyRu.id, externalId: EXTERNAL_ID_RU, lang: "ru" }, "Russian survey created");
+        "Russian Scrum daily survey created",
+      );
+    }
 
     logger.info("Seed completed successfully");
-    logger.info({ externalIdEn: EXTERNAL_ID_EN, externalIdRu: EXTERNAL_ID_RU }, "Demo surveys are ready");
+    logger.info(
+      {
+        externalIdEn: EXTERNAL_ID_EN,
+        externalIdRu: EXTERNAL_ID_RU,
+        externalIdScrumRu: EXTERNAL_ID_SCRUM_RU,
+      },
+      "Demo surveys are ready",
+    );
 
     await db.destroy();
   } catch (error: any) {

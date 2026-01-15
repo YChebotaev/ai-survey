@@ -125,7 +125,8 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
 
       // Find the first question that doesn't have data yet
       // (in case user provides data in a previous session or somehow)
-      const allQuestions = await this.questionTemplatesRepository.findByProjectId(survey.projectId);
+      const allQuestions = await this.questionTemplatesRepository.findBySurveyId(survey.id);
+      
       let firstQuestion: QuestionTemplate | null = null;
       let firstQuestionOrder = 1;
 
@@ -228,8 +229,8 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         throw new Error(`Survey with id ${session.surveyId} not found`);
       }
 
-      const nextQuestion = await this.questionTemplatesRepository.findByProjectIdAndOrder(
-        survey.projectId,
+      const nextQuestion = await this.questionTemplatesRepository.findBySurveyIdAndOrder(
+        survey.id,
         nextOrder,
       );
 
@@ -399,6 +400,24 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
     }
   }
 
+  public async getQuestionBySurveyIdAndOrder(
+    surveyId: number,
+    order: number,
+  ): Promise<QuestionTemplate | null> {
+    try {
+      const question = await this.questionTemplatesRepository.findBySurveyIdAndOrder(
+        surveyId,
+        order,
+      );
+
+      return question || null;
+    } catch (error) {
+      this.logger.error(error, "Failed to get question by surveyId");
+
+      throw error;
+    }
+  }
+
   public async getSurveyById(surveyId: number): Promise<Survey | null> {
     try {
       const survey = await this.surveysRepository.getById(surveyId);
@@ -470,6 +489,18 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       return questions;
     } catch (error) {
       this.logger.error(error, "Failed to get all question templates");
+
+      return [];
+    }
+  }
+
+  public async getAllQuestionTemplatesBySurveyId(surveyId: number): Promise<QuestionTemplate[]> {
+    try {
+      const questions = await this.questionTemplatesRepository.findBySurveyId(surveyId);
+
+      return questions;
+    } catch (error) {
+      this.logger.error(error, "Failed to get all question templates by surveyId");
 
       return [];
     }

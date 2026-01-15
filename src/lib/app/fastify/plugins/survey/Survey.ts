@@ -112,8 +112,8 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
 
         // Get the question template for the current order
-        const questionTemplate = await this.surveySessionService.getQuestionByProjectIdAndOrder(
-          survey.projectId,
+        const questionTemplate = await this.surveySessionService.getQuestionBySurveyIdAndOrder(
+          survey.id,
           currentOrder,
         );
 
@@ -128,8 +128,8 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         );
 
         // Get all question templates to extract all possible dataKeys
-        const allQuestionTemplates = await this.surveySessionService.getAllQuestionTemplatesByProjectId(
-          survey.projectId,
+        const allQuestionTemplates = await this.surveySessionService.getAllQuestionTemplatesBySurveyId(
+          survey.id,
         );
         const allDataKeys = allQuestionTemplates.map((qt) => qt.dataKey);
 
@@ -235,8 +235,8 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         const maxOrder = Math.max(...allQuestionTemplates.map((qt) => qt.order));
         
         while (nextOrder <= maxOrder) {
-          const candidateQuestion = await this.surveySessionService.getQuestionByProjectIdAndOrder(
-            survey.projectId,
+          const candidateQuestion = await this.surveySessionService.getQuestionBySurveyIdAndOrder(
+            survey.id,
             nextOrder,
           );
 

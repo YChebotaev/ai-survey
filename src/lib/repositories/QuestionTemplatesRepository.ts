@@ -7,6 +7,7 @@ export type QuestionTemplate = {
   id: number;
   accountId: number;
   projectId: number;
+  surveyId: number | null;
   order: number;
   dataKey: string;
   questionTemplate: string;
@@ -29,6 +30,7 @@ export class QuestionTemplatesRepository extends RepositoryBase<QuestionTemplate
   public async create({
     accountId,
     projectId,
+    surveyId,
     order,
     dataKey,
     questionTemplate,
@@ -42,6 +44,7 @@ export class QuestionTemplatesRepository extends RepositoryBase<QuestionTemplate
     const [id] = await this.db(this.tableName).insert({
       accountId,
       projectId,
+      surveyId,
       order,
       dataKey,
       questionTemplate,
@@ -81,9 +84,28 @@ export class QuestionTemplatesRepository extends RepositoryBase<QuestionTemplate
     return result as QuestionTemplate | undefined;
   }
 
+  public async findBySurveyIdAndOrder(
+    surveyId: number,
+    order: QuestionTemplate["order"],
+  ) {
+    const result = await this.db(this.tableName)
+      .where({ surveyId, order, deleted: false })
+      .first();
+
+    return result as QuestionTemplate | undefined;
+  }
+
   public async findByProjectId(projectId: number) {
     const results = await this.db(this.tableName)
       .where({ projectId, deleted: false })
+      .orderBy("order", "asc");
+
+    return results as QuestionTemplate[];
+  }
+
+  public async findBySurveyId(surveyId: number) {
+    const results = await this.db(this.tableName)
+      .where({ surveyId, deleted: false })
       .orderBy("order", "asc");
 
     return results as QuestionTemplate[];

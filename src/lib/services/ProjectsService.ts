@@ -151,10 +151,15 @@ export class ProjectsService extends ServiceBase<ProjectsServiceConfig> {
         lang,
       });
 
+      if (!survey) {
+        throw new Error("Failed to create survey");
+      }
+
       for (const template of questionTemplates) {
         await this.questionTemplatesRepository.create({
           accountId,
           projectId,
+          surveyId: survey.id,
           order: template.order,
           dataKey: template.dataKey,
           questionTemplate: template.questionTemplate,
@@ -163,10 +168,6 @@ export class ProjectsService extends ServiceBase<ProjectsServiceConfig> {
           final: template.final,
           type: template.type || "freeform",
         });
-      }
-
-      if (!survey) {
-        throw new Error("Failed to create survey");
       }
 
       this.logger.info({ surveyId: survey.id }, "Survey created");

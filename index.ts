@@ -48,8 +48,14 @@ export const createDb = async () => {
       useNullAsDefault: true,
     });
 
-    await k.migrate.up({
-      directory: path.join(process.cwd(), "src/lib/migrations"),
+    // Enable foreign keys for SQLite
+    await k.raw("PRAGMA foreign_keys = ON");
+
+    const migrationDir = path.join(process.cwd(), "src/lib/migrations");
+    
+    // Use migrate.latest() to run ALL pending migrations (not just one)
+    await k.migrate.latest({
+      directory: migrationDir,
     });
 
     return k;

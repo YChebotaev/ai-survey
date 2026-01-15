@@ -7,7 +7,22 @@
   <link rel="stylesheet" href="/demo/styles/style.css">
 </head>
 <body>
-  <div class="chat">
+  <!-- Model Selector -->
+  <div class="selector" id="selector">
+    <div class="selector__content">
+      <h1 class="selector__title">Select Survey Model</h1>
+      <div class="selector__form">
+        <select class="selector__select" id="modelSelect">
+          <option value="demo-survey-en">English</option>
+          <option value="demo-survey-ru">Russian</option>
+        </select>
+        <button class="selector__button" id="startButton">Start Survey</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Interface -->
+  <div class="chat" id="chat" style="display: none;">
     <div class="chat__messages" id="messages"></div>
     <div class="chat__input">
       <input type="text" class="chat__input-field" id="messageInput" placeholder="Type your message...">

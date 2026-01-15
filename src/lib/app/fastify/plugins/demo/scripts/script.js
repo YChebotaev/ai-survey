@@ -1,4 +1,8 @@
 (function() {
+  const selector = document.getElementById('selector');
+  const chat = document.getElementById('chat');
+  const modelSelect = document.getElementById('modelSelect');
+  const startButton = document.getElementById('startButton');
   const messagesContainer = document.getElementById('messages');
   const messageInput = document.getElementById('messageInput');
   const sendButton = document.getElementById('sendButton');
@@ -7,11 +11,33 @@
   const modalClose = document.getElementById('modalClose');
   const reportJson = document.getElementById('reportJson');
 
-  // Get externalId from URL parameter or use default
+  // Get externalId from URL parameter
   const urlParams = new URLSearchParams(window.location.search);
-  const externalId = urlParams.get('externalId') || 'demo-survey';
+  const externalId = urlParams.get('externalId');
   let sessionId = null;
   let isCompleted = false;
+
+  // Show selector if no externalId, otherwise show chat
+  if (!externalId) {
+    selector.style.display = 'flex';
+    chat.style.display = 'none';
+  } else {
+    selector.style.display = 'none';
+    chat.style.display = 'flex';
+  }
+
+  // Handle model selection
+  startButton.addEventListener('click', function() {
+    const selectedModel = modelSelect.value;
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.set('externalId', selectedModel);
+    window.location.href = newUrl.toString();
+  });
+
+  // Only initialize chat if externalId is present
+  if (!externalId) {
+    return;
+  }
 
   function addMessage(text, isUser) {
     const messageDiv = document.createElement('div');
@@ -169,6 +195,8 @@
     }
   });
 
-  // Initialize session when page loads
-  initializeSession();
+  // Initialize session when page loads (only if externalId is present)
+  if (externalId) {
+    initializeSession();
+  }
 })();

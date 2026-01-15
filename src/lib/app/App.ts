@@ -81,11 +81,11 @@ export class App implements Runnable<AppStartArgs, []> {
 
       this.logger.info("Starting app...");
 
-      const address = await this.fastify.listen({ host, port });
+      await this.fastify.listen({ host, port });
 
       this.runState = "running";
 
-      this.logger.info(`App is running on ${address}`);
+      this.logger.info(`App is running on http://${host}:${port}`);
     } catch (error) {
       this.runState = "failed";
 
@@ -226,6 +226,11 @@ export class App implements Runnable<AppStartArgs, []> {
     await this.fastify.register(plugins.surveyPlugin as any, {
       surveySessionService,
       aiService,
+      logger,
+    });
+
+    await this.fastify.register(plugins.demoPlugin as any, {
+      surveySessionService,
       logger,
     });
   }

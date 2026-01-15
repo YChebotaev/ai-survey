@@ -271,11 +271,17 @@ The only permitted way to fail-fast is misconfiguration which checked as soon as
 
 If something configured at a run-time, it also should not fail
 
-If something configured at start-time, first few seconds after start, it may fail
+If something configured at start-time and/or first few seconds after start, it may fail
 
 So, try-catches, null-and-undefined-checks, checks for empty values should be performed
 
 App uses try-cathces for all external network and database access
+
+Every external input should be validated and parsed
+
+Most of the time external input is something that comes by network
+
+Don't trust data blindly, validate it before use
 
 Every error are logged as `this.logger.error(error, "Optional message")`
 

@@ -90,7 +90,7 @@ export class ProjectsPlugin extends BaseFastifyPlugin<ProjectsPluginOptions> {
           type?: string;
         }>;
       };
-    }>("/:accountId/projects/:projectId/survey", async (request: FastifyRequest<{ Params: { accountId: string; projectId: string }; Body: { externalId: string; questionTemplates: Array<{ order: number; questionTemplate: string; successTemplate: string; failTemplate: string; final: boolean; type?: string }> } }>, reply: FastifyReply) => {
+    }>("/:accountId/projects/:projectId/survey", async (request: FastifyRequest<{ Params: { accountId: string; projectId: string }; Body: { externalId: string; questionTemplates: Array<{ order: number; dataKey: string; questionTemplate: string; successTemplate: string; failTemplate: string; final: boolean; type?: string }> } }>, reply: FastifyReply) => {
       try {
         const { accountId, projectId } = request.params;
         const { externalId, questionTemplates } = request.body;

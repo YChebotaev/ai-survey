@@ -26,25 +26,26 @@ export const createDb = async () => {
   try {
     mkdirSync(dbDir, { recursive: true });
   } catch (error: any) {
-    // Directory might already exist, ignore
-    if (error.code !== "EEXIST") {
-      throw error;
-    }
+    throw new Error(`Failed to create database directory at ${dbDir}: ${error.message}`);
   }
 
-  const k = knex({
-    client: "sqlite3",
-    connection: {
-      filename: dbPath,
-    },
-    useNullAsDefault: true,
-  });
+  try {
+    const k = knex({
+      client: "sqlite3",
+      connection: {
+        filename: dbPath,
+      },
+      useNullAsDefault: true,
+    });
 
-  await k.migrate.up({
-    directory: path.join(process.cwd(), "src/lib/migrations"),
-  });
+    await k.migrate.up({
+      directory: path.join(process.cwd(), "src/lib/migrations"),
+    });
 
-  return k;
+    return k;
+  } catch (error: any) {
+    throw new Error(`Failed to initialize database at ${dbPath}: ${error.message}`);
+  }
 };
 
 export const createApp = async ({

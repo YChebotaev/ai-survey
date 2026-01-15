@@ -1,26 +1,33 @@
+import type { SupportedLanguage } from "../../types";
+
 export type RephraseQuestionArgs = {
   question: string;
+  lang: SupportedLanguage;
   currentDataState?: Record<string, any>;
   previousConversation?: Array<{ question: string; answer: string }>;
 };
 
 export type RephraseCompletionArgs = {
   text: string;
+  lang: SupportedLanguage;
 };
 
 export type CombineSuccessWithQuestionArgs = {
   success: string;
   question: string;
+  lang: SupportedLanguage;
 };
 
 export type CombineFailWithQuestionArgs = {
   fail: string;
   question: string;
+  lang: SupportedLanguage;
 };
 
 export type ExtractDataArgs = {
   text: string;
   dataKey: string;
+  lang: SupportedLanguage;
   currentDataState?: Record<string, any>;
   previousConversation?: Array<{ question: string; answer: string }>;
 };

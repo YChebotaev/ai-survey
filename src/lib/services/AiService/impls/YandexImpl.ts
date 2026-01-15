@@ -7,6 +7,7 @@ import type {
   CombineFailWithQuestionArgs,
   ExtractDataArgs,
 } from "../types";
+import { aiPrompts } from "../localization";
 
 export type YandexImplConfig = {
   yandexCloudFolder: string;
@@ -89,30 +90,33 @@ export class YandexImpl {
 
   public async rephraseQuestion({
     question,
+    lang,
     currentDataState,
     previousConversation,
   }: RephraseQuestionArgs): Promise<string> {
     try {
       this.logger.info(
-        { question, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { question, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Rephrasing question",
       );
 
-      let instructions =
-        "You are a helpful assistant that rephrases questions to make them more natural and conversational while preserving their original meaning.";
+      const hasDataState = !!(currentDataState && Object.keys(currentDataState).length > 0);
+      const hasConversation = !!(previousConversation && previousConversation.length > 0);
+
+      const instructions = hasDataState
+        ? aiPrompts[lang].rephraseQuestionWithContext(question, hasDataState, hasConversation)
+        : aiPrompts[lang].rephraseQuestion(question);
+
       let input = question;
 
       // For subsequent questions (not initial), include context
-      if (currentDataState && Object.keys(currentDataState).length > 0) {
+      if (hasDataState) {
         const dataStateJson = JSON.stringify(currentDataState, null, 2);
-        instructions +=
-          "\n\nYou have access to the current state of collected data. Use this context to make the question more relevant and personalized.";
-
         input = `Current data state:\n${dataStateJson}\n\nQuestion to rephrase: ${question}`;
       }
 
       // Include previous conversation if available
-      if (previousConversation && previousConversation.length > 0) {
+      if (hasConversation) {
         const conversationText = previousConversation
           .map((item) => `Q: ${item.question}\nA: ${item.answer}`)
           .join("\n\n");
@@ -145,14 +149,14 @@ export class YandexImpl {
 
   public async rephraseCompletion({
     text,
+    lang,
   }: RephraseCompletionArgs): Promise<string> {
     try {
-      this.logger.info({ text }, "Rephrasing completion");
+      this.logger.info({ text, lang }, "Rephrasing completion");
 
       const response = await this.client.responses.create({
         model: `gpt://${this.yandexCloudFolder}/${this.yandexCloudModel}`,
-        instructions:
-          "You are a helpful assistant that rephrases completion messages to make them more natural and conversational while preserving their original meaning.",
+        instructions: aiPrompts[lang].rephraseCompletion(text),
         input: text,
         temperature: 0.3,
         max_output_tokens: 500,
@@ -176,17 +180,17 @@ export class YandexImpl {
   public async combineSuccessWithQuestion({
     success,
     question,
+    lang,
   }: CombineSuccessWithQuestionArgs): Promise<string> {
     try {
       this.logger.info(
-        { success, question },
+        { success, question, lang },
         "Combining success with question",
       );
 
       const response = await this.client.responses.create({
         model: `gpt://${this.yandexCloudFolder}/${this.yandexCloudModel}`,
-        instructions:
-          "You are a helpful assistant that combines a success message with a follow-up question in a natural, conversational way. The success message should flow smoothly into the question.",
+        instructions: aiPrompts[lang].combineSuccessWithQuestion(success, question),
         input: `Success message: ${success}\n\nFollow-up question: ${question}`,
         temperature: 0.3,
         max_output_tokens: 500,
@@ -210,14 +214,14 @@ export class YandexImpl {
   public async combineFailWithQuestion({
     fail,
     question,
+    lang,
   }: CombineFailWithQuestionArgs): Promise<string> {
     try {
-      this.logger.info({ fail, question }, "Combining fail with question");
+      this.logger.info({ fail, question, lang }, "Combining fail with question");
 
       const response = await this.client.responses.create({
         model: `gpt://${this.yandexCloudFolder}/${this.yandexCloudModel}`,
-        instructions:
-          "You are a helpful assistant that combines a failure/retry message with a question in a natural, conversational way. The failure message should flow smoothly into the question, encouraging the user to try again.",
+        instructions: aiPrompts[lang].combineFailWithQuestion(fail, question),
         input: `Failure message: ${fail}\n\nQuestion to repeat: ${question}`,
         temperature: 0.3,
         max_output_tokens: 500,
@@ -241,18 +245,20 @@ export class YandexImpl {
   public async extractData({
     text,
     dataKey,
+    lang,
     currentDataState,
     previousConversation,
   }: ExtractDataArgs): Promise<Record<string, any> | null> {
     try {
       this.logger.info(
-        { text, dataKey, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { text, dataKey, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Extracting data",
       );
 
-      let instructions = `You are a helpful assistant that extracts meaningful data from user responses. Extract the key information from the user's text and return it as a JSON object. The data should be stored under the key "${dataKey}". 
+      const hasDataState = !!(currentDataState && Object.keys(currentDataState).length > 0);
+      const hasConversation = !!(previousConversation && previousConversation.length > 0);
 
-IMPORTANT: Your response MUST contain the extracted data. If the user's response does not contain meaningful information for the requested data, you MUST return null or an empty object for that field. However, if the user provides meaningful information, you MUST extract it and return it in the JSON format. Return only valid JSON, no additional text.`;
+      const instructions = aiPrompts[lang].extractData(text, dataKey, hasDataState, hasConversation);
 
       let input = `Extract meaningful data from this text and return as JSON with key "${dataKey}": ${text}`;
 

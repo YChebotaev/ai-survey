@@ -20,12 +20,13 @@ export class DummyImpl {
 
   public async rephraseQuestion({
     question,
+    lang,
     currentDataState,
     previousConversation,
   }: RephraseQuestionArgs): Promise<string> {
     try {
       this.logger.info(
-        { question, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { question, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Rephrasing question",
       );
 
@@ -39,9 +40,9 @@ export class DummyImpl {
     }
   }
 
-  public async rephraseCompletion({ text }: RephraseCompletionArgs): Promise<string> {
+  public async rephraseCompletion({ text, lang }: RephraseCompletionArgs): Promise<string> {
     try {
-      this.logger.info({ text }, "Rephrasing completion");
+      this.logger.info({ text, lang }, "Rephrasing completion");
 
       // For now, mock implementation - just return the text as-is
       return text;
@@ -55,9 +56,10 @@ export class DummyImpl {
   public async combineSuccessWithQuestion({
     success,
     question,
+    lang,
   }: CombineSuccessWithQuestionArgs): Promise<string> {
     try {
-      this.logger.info({ success, question }, "Combining success with question");
+      this.logger.info({ success, question, lang }, "Combining success with question");
 
       // For now, mock implementation - combine with empty newline
       return `${success}\n\n${question}`;
@@ -71,9 +73,10 @@ export class DummyImpl {
   public async combineFailWithQuestion({
     fail,
     question,
+    lang,
   }: CombineFailWithQuestionArgs): Promise<string> {
     try {
-      this.logger.info({ fail, question }, "Combining fail with question");
+      this.logger.info({ fail, question, lang }, "Combining fail with question");
 
       // For now, mock implementation - combine with empty newline
       return `${fail}\n\n${question}`;
@@ -87,12 +90,13 @@ export class DummyImpl {
   public async extractData({
     text,
     dataKey,
+    lang,
     currentDataState,
     previousConversation,
   }: ExtractDataArgs): Promise<Record<string, any> | null> {
     try {
       this.logger.info(
-        { text, dataKey, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { text, dataKey, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Extracting data",
       );
 

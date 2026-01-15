@@ -1,6 +1,7 @@
 import fastifyPlugin from "fastify-plugin";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Logger } from "pino";
+import type { SupportedLanguage } from "../../../../types";
 import { BaseFastifyPlugin, type PluginBaseOptions } from "../../plugin-base";
 import { SurveySessionService, AiService } from "../../../../services";
 
@@ -47,8 +48,18 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           });
         }
 
+        // Get survey to access lang
+        const survey = await this.surveySessionService.getSurveyById(session.surveyId);
+
+        if (!survey) {
+          return reply.code(404).send({ error: "Survey not found" });
+        }
+
+        const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
+
         const reformulatedQuestion = await this.aiService.rephraseQuestion({
           question: question.questionTemplate,
+          lang,
           // Initial question - no data state or conversation yet
         });
 
@@ -96,6 +107,9 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           return reply.code(404).send({ error: "Survey not found" });
         }
 
+        // Normalize lang to ensure it's valid
+        const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
+
         // Get the question template for the current order
         const questionTemplate = await this.surveySessionService.getQuestionByProjectIdAndOrder(
           survey.projectId,
@@ -116,11 +130,13 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         const extractDataArgs: {
           text: string;
           dataKey: string;
+          lang: SupportedLanguage;
           currentDataState?: Record<string, any>;
           previousConversation?: Array<{ question: string; answer: string }>;
         } = {
           text: answerText,
           dataKey: questionTemplate.dataKey,
+          lang,
         };
 
         if (currentDataState) {
@@ -135,12 +151,16 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
 
         if (!extractedData) {
           // If extraction failed, combine fail template with question and repeat
+          const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
+
           const rephraseQuestionArgs: {
             question: string;
+            lang: SupportedLanguage;
             currentDataState?: Record<string, any>;
             previousConversation?: Array<{ question: string; answer: string }>;
           } = {
             question: questionTemplate.questionTemplate,
+            lang,
           };
 
           if (currentDataState) {
@@ -156,6 +176,7 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           const failMessage = await this.aiService.combineFailWithQuestion({
             fail: questionTemplate.failTemplate,
             question: reformulatedQuestion,
+            lang,
           });
 
           return reply.code(200).send({
@@ -181,6 +202,7 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
 
           const finalMessage = await this.aiService.rephraseCompletion({
             text: questionTemplate.successTemplate,
+            lang,
           });
 
           return reply.code(200).send({
@@ -223,10 +245,12 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         // Rephrase the next question with context
         const rephraseNextQuestionArgs: {
           question: string;
+          lang: SupportedLanguage;
           currentDataState?: Record<string, any>;
           previousConversation?: Array<{ question: string; answer: string }>;
         } = {
           question: nextQuestion.questionTemplate,
+          lang,
         };
 
         if (updatedDataState) {
@@ -243,6 +267,7 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         const combinedMessage = await this.aiService.combineSuccessWithQuestion({
           success: questionTemplate.successTemplate,
           question: reformulatedNextQuestion,
+          lang,
         });
 
         logger.info({ sessionId, answerId: answer.id }, "Answer received and next question sent");

@@ -1,5 +1,6 @@
 import { type Logger } from "pino";
 import { ServiceBase } from "./ServiceBase";
+import type { SupportedLanguage } from "../types";
 import {
   ProjectsRepository,
   ProjectMembershipsRepository,
@@ -35,6 +36,7 @@ export type CreateSurveyArgs = {
   accountId: number;
   projectId: number;
   externalId: string;
+  lang?: SupportedLanguage;
   questionTemplates: Array<{
     order: number;
     dataKey: string;
@@ -133,11 +135,12 @@ export class ProjectsService extends ServiceBase<ProjectsServiceConfig> {
     accountId,
     projectId,
     externalId,
+    lang = "en",
     questionTemplates,
   }: CreateSurveyArgs): Promise<Survey> {
     try {
       this.logger.info(
-        { accountId, projectId, externalId, questionCount: questionTemplates.length },
+        { accountId, projectId, externalId, lang, questionCount: questionTemplates.length },
         "Creating survey",
       );
 
@@ -145,6 +148,7 @@ export class ProjectsService extends ServiceBase<ProjectsServiceConfig> {
         accountId,
         projectId,
         externalId,
+        lang,
       });
 
       for (const template of questionTemplates) {

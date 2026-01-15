@@ -1,4 +1,5 @@
 import { RepositoryBase, type RepositoryBaseConfig } from "./RepositoryBase";
+import type { SupportedLanguage } from "../types";
 
 export interface SurveysRepositoryConfig extends RepositoryBaseConfig {}
 
@@ -7,6 +8,7 @@ export type Survey = {
   accountId: number;
   projectId: number;
   externalId: string;
+  lang: SupportedLanguage;
   deleted: boolean;
   createdAt: string;
   updatedAt: string | null;
@@ -23,6 +25,7 @@ export class SurveysRepository extends RepositoryBase<SurveysRepositoryConfig> {
     accountId,
     projectId,
     externalId,
+    lang,
   }: SurveyCreateArgs) {
     const now = new Date().toISOString();
 
@@ -30,6 +33,7 @@ export class SurveysRepository extends RepositoryBase<SurveysRepositoryConfig> {
       accountId,
       projectId,
       externalId,
+      lang,
       deleted: false,
       createdAt: now,
       updatedAt: null,

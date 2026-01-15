@@ -6,6 +6,7 @@ export const up = (knex: Knex) => {
     table.integer("accountId").notNullable().references("id").inTable("accounts");
     table.integer("projectId").notNullable().references("id").inTable("projects");
     table.string("externalId").notNullable().unique();
+    table.string("lang").notNullable().defaultTo("en");
     table.boolean("deleted").defaultTo(false).notNullable();
     table.string("createdAt").notNullable();
     table.string("updatedAt").nullable();

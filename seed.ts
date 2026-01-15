@@ -127,6 +127,7 @@ const seed = async () => {
       accountId: account.id,
       projectId: project.id,
       externalId: EXTERNAL_ID,
+      lang: "en",
       questionTemplates: [
         {
           order: 1,

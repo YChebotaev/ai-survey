@@ -1,5 +1,7 @@
 export type InitStates = "created" | "initializing" | "initialized" | "failed";
 
+export type SupportedLanguage = "en" | "ru";
+
 export type Runnable<
   StartArgs extends unknown[] = [],
   StopArgs extends unknown[] = [],

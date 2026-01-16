@@ -43,11 +43,16 @@ export class DemoPlugin extends BaseFastifyPlugin<DemoPluginOptions> {
       try {
         let html = readFileSync(htmlPath, "utf-8");
         
-        // Replace absolute paths with protocol-relative paths to avoid mixed content issues
-        // Protocol-relative URLs (//example.com/path) use the same protocol as the page
+        // Get the full URL with protocol and port to ensure resources use HTTP
+        const protocol = "http"; // Force HTTP since we're serving over HTTP
         const host = request.headers.host || "";
-        html = html.replace(/href="\/demo\//g, `href="//${host}/demo/`);
-        html = html.replace(/src="\/demo\//g, `src="//${host}/demo/`);
+        const baseUrl = `${protocol}://${host}/demo`;
+        
+        // Inject base tag with explicit HTTP URL to prevent protocol upgrades
+        html = html.replace(
+          "<head>",
+          `<head><base href="${baseUrl}/">`
+        );
 
         return reply.type("text/html").code(200).send(html);
       } catch (error) {
@@ -57,12 +62,17 @@ export class DemoPlugin extends BaseFastifyPlugin<DemoPluginOptions> {
       }
     };
 
+    this.fastify.get("/demo", serveHtml);
     this.fastify.get("/demo/", serveHtml);
     this.fastify.get("/demo/index.html", serveHtml);
 
     this.fastify.get("/demo/styles/style.css", async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const css = readFileSync(cssPath, "utf-8");
+
+        // Add headers to prevent protocol upgrades
+        reply.header("Content-Security-Policy", "default-src 'self' http: data: 'unsafe-inline' 'unsafe-eval'; upgrade-insecure-requests: false");
+        reply.header("X-Content-Type-Options", "nosniff");
 
         return reply.type("text/css").code(200).send(css);
       } catch (error) {
@@ -75,6 +85,10 @@ export class DemoPlugin extends BaseFastifyPlugin<DemoPluginOptions> {
     this.fastify.get("/demo/scripts/script.js", async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const js = readFileSync(jsPath, "utf-8");
+
+        // Add headers to prevent protocol upgrades
+        reply.header("Content-Security-Policy", "default-src 'self' http: data: 'unsafe-inline' 'unsafe-eval'; upgrade-insecure-requests: false");
+        reply.header("X-Content-Type-Options", "nosniff");
 
         return reply.type("application/javascript").code(200).send(js);
       } catch (error) {

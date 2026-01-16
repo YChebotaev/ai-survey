@@ -34,6 +34,7 @@ export type AppConfig = {
   helmet?: boolean;
   cors?: boolean;
   swagger?: boolean;
+  useDemo?: boolean;
   logger: Logger;
   accountsRepository: AccountsRepository;
   usersRepository: UsersRepository;
@@ -170,6 +171,7 @@ export class App implements Runnable<AppStartArgs, []> {
       projectsService,
       aiService,
       surveySessionService,
+      useDemo,
       logger,
     } = config;
 
@@ -189,10 +191,12 @@ export class App implements Runnable<AppStartArgs, []> {
       logger,
     });
 
-    await this.fastify.register(plugins.demoPlugin as any, {
-      surveySessionService,
-      logger,
-    });
+    if (useDemo) {
+      await this.fastify.register(plugins.demoPlugin as any, {
+        surveySessionService,
+        logger,
+      });
+    }
   }
 
   private async initializePost({ swagger }: Pick<AppConfig, "swagger">) {

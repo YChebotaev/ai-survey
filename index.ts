@@ -205,6 +205,7 @@ export const createApp = async ({
     helmet: true,
     cors: true,
     swagger: true,
+    useDemo: env.USE_DEMO,
     logger,
     accountsRepository,
     usersRepository,

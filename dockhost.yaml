@@ -17,6 +17,7 @@ containers:
       YANDEX_CLOUD_FOLDER: $YANDEX_CLOUD_FOLDER
       YANDEX_CLOUD_API_KEY: $YANDEX_CLOUD_API_KEY
       YANDEX_CLOUD_MODEL: $YANDEX_CLOUD_MODEL
+      USE_DEMO: false
 volumes:
   ai-survey-data:
     type: ssd

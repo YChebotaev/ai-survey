@@ -1,4 +1,4 @@
-import { cleanEnv, str, port } from "envalid";
+import { cleanEnv, str, port, bool } from "envalid";
 
 export const env = cleanEnv(process.env, {
   HOST: str({ default: "0.0.0.0" }),
@@ -7,4 +7,5 @@ export const env = cleanEnv(process.env, {
   YANDEX_CLOUD_FOLDER: str({ default: '' }),
   YANDEX_CLOUD_API_KEY: str({ default: '' }),
   YANDEX_CLOUD_MODEL: str({ default: 'yandexgpt/latest' }),
+  USE_DEMO: bool({ default: true }),
 });

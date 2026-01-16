@@ -39,9 +39,9 @@ export const aiPrompts: Record<SupportedLanguage, AiPromptLocalization> = {
     rephraseCompletion: (text: string) =>
       "You are a helpful assistant that rephrases completion messages to make them more natural and conversational while preserving their original meaning.",
     combineSuccessWithQuestion: (success: string, question: string) =>
-      "You are a helpful assistant that combines a success message with a follow-up question in a natural, conversational way. The success message should flow smoothly into the question.",
+      "You are a helpful assistant that combines a success message with a follow-up question in a natural, conversational way. First, rephrase the question to make it more natural and conversational while preserving its original meaning. Then, combine the success message with the rephrased question so they flow smoothly together.",
     combineFailWithQuestion: (fail: string, question: string) =>
-      "You are a helpful assistant that combines a failure/retry message with a question in a natural, conversational way. The failure message should flow smoothly into the question, encouraging the user to try again.",
+      "You are a helpful assistant that combines a failure/retry message with a question in a natural, conversational way. First, rephrase the question to make it more natural and conversational while preserving its original meaning. Then, combine the failure message with the rephrased question so they flow smoothly together, encouraging the user to try again.",
     extractData: (
       text: string,
       currentQuestionDataKey: string,
@@ -58,7 +58,11 @@ However, the user's response may contain information for ANY of the following da
 
 Extract ALL possible data from the user's text that matches ANY of these data keys. Return a JSON object where each data key that has meaningful information is included with its extracted value.
 
-IMPORTANT: Your response MUST contain the extracted data. If the user's response does not contain meaningful information for a particular data key, you MUST return null or an empty object for that field. However, if the user provides meaningful information for any data key, you MUST extract it and return it in the JSON format. Return only valid JSON, no additional text.`;
+IMPORTANT RULES:
+1. If the user explicitly states there are NO problems, NO obstacles, or that everything is fine/clear, extract this as a meaningful value like "none", "no", "no problems", or "no obstacles" (NOT null).
+2. If the user provides positive information (e.g., "ahead of schedule", "everything is clear"), this can also indicate no obstacles - extract it as "none" or a similar positive indicator.
+3. Your response MUST contain the extracted data. If the user's response does not contain meaningful information for a particular data key, you MUST return null for that field. However, if the user explicitly states there are no problems/obstacles, you MUST extract this as a non-null value (like "none" or "no").
+4. If the user provides meaningful information for any data key, you MUST extract it and return it in the JSON format. Return only valid JSON, no additional text.`;
       return prompt;
     },
   },
@@ -81,9 +85,9 @@ IMPORTANT: Your response MUST contain the extracted data. If the user's response
     rephraseCompletion: (text: string) =>
       "Вы полезный помощник, который перефразирует сообщения о завершении, чтобы сделать их более естественными и разговорными, сохраняя при этом их первоначальный смысл.",
     combineSuccessWithQuestion: (success: string, question: string) =>
-      "Вы полезный помощник, который естественным, разговорным образом объединяет сообщение об успехе со следующим вопросом. Сообщение об успехе должно плавно переходить в вопрос.",
+      "Вы полезный помощник, который естественным, разговорным образом объединяет сообщение об успехе со следующим вопросом. Сначала перефразируйте вопрос, чтобы сделать его более естественным и разговорным, сохраняя при этом его первоначальный смысл. Затем объедините сообщение об успехе с перефразированным вопросом так, чтобы они плавно переходили друг в друга.",
     combineFailWithQuestion: (fail: string, question: string) =>
-      "Вы полезный помощник, который естественным, разговорным образом объединяет сообщение об ошибке/повторе с вопросом. Сообщение об ошибке должно плавно переходить в вопрос, побуждая пользователя попробовать снова.",
+      "Вы полезный помощник, который естественным, разговорным образом объединяет сообщение об ошибке/повторе с вопросом. Сначала перефразируйте вопрос, чтобы сделать его более естественным и разговорным, сохраняя при этом его первоначальный смысл. Затем объедините сообщение об ошибке с перефразированным вопросом так, чтобы они плавно переходили друг в друга, побуждая пользователя попробовать снова.",
     extractData: (
       text: string,
       currentQuestionDataKey: string,
@@ -100,7 +104,11 @@ IMPORTANT: Your response MUST contain the extracted data. If the user's response
 
 Извлеките ВСЕ возможные данные из текста пользователя, которые соответствуют ЛЮБОМУ из этих ключей данных. Верните JSON объект, где каждый ключ данных, для которого есть значимая информация, включен с его извлеченным значением.
 
-ВАЖНО: Ваш ответ ДОЛЖЕН содержать извлеченные данные. Если ответ пользователя не содержит значимой информации для конкретного ключа данных, вы ДОЛЖНЫ вернуть null или пустой объект для этого поля. Однако, если пользователь предоставляет значимую информацию для любого ключа данных, вы ДОЛЖНЫ извлечь её и вернуть в формате JSON. Возвращайте только валидный JSON, без дополнительного текста.`;
+ВАЖНЫЕ ПРАВИЛА:
+1. Если пользователь явно указывает, что НЕТ проблем, НЕТ препятствий, или что всё хорошо/понятно, извлеките это как значимое значение, например "нет", "нет проблем", "нет препятствий" или "всё хорошо" (НЕ null).
+2. Если пользователь предоставляет положительную информацию (например, "опережаю график", "всё понятно"), это также может указывать на отсутствие препятствий - извлеките это как "нет" или аналогичный положительный индикатор.
+3. Ваш ответ ДОЛЖЕН содержать извлеченные данные. Если ответ пользователя не содержит значимой информации для конкретного ключа данных, вы ДОЛЖНЫ вернуть null для этого поля. Однако, если пользователь явно указывает, что нет проблем/препятствий, вы ДОЛЖНЫ извлечь это как ненулевое значение (например, "нет" или "нет проблем").
+4. Если пользователь предоставляет значимую информацию для любого ключа данных, вы ДОЛЖНЫ извлечь её и вернуть в формате JSON. Возвращайте только валидный JSON, без дополнительного текста.`;
       return prompt;
     },
   },

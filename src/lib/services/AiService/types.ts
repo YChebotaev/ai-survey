@@ -16,12 +16,16 @@ export type CombineSuccessWithQuestionArgs = {
   success: string;
   question: string;
   lang: SupportedLanguage;
+  currentDataState?: Record<string, any>;
+  previousConversation?: Array<{ question: string; answer: string }>;
 };
 
 export type CombineFailWithQuestionArgs = {
   fail: string;
   question: string;
   lang: SupportedLanguage;
+  currentDataState?: Record<string, any>;
+  previousConversation?: Array<{ question: string; answer: string }>;
 };
 
 export type ExtractDataArgs = {

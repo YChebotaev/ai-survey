@@ -74,11 +74,17 @@ export class DummyImpl {
     fail,
     question,
     lang,
+    currentDataState,
+    previousConversation,
   }: CombineFailWithQuestionArgs): Promise<string> {
     try {
-      this.logger.info({ fail, question, lang }, "Combining fail with question");
+      this.logger.info(
+        { fail, question, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        "Combining fail with question",
+      );
 
-      // For now, mock implementation - combine with empty newline
+      // For now, mock implementation - just combine with newline
+      // Dummy implementation accepts params but does nothing with them
       return `${fail}\n\n${question}`;
     } catch (error) {
       this.logger.error(error, "Failed to combine fail with question");

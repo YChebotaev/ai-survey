@@ -295,9 +295,27 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
           
           // Store ALL extracted data (not just the current question's dataKey)
           // This allows extracting multiple dataKeys from a single answer
+          // Accept "none", "no", "нет", "нет проблем" as valid values (not null)
+          const isNoneValue = (val: any): boolean => {
+            if (typeof val === "string") {
+              const lower = val.toLowerCase();
+              return (
+                lower === "none" ||
+                lower === "no" ||
+                lower === "нет" ||
+                lower.includes("нет проблем") ||
+                lower.includes("no problems")
+              );
+            }
+            return false;
+          };
+
           for (const [key, value] of Object.entries(extractedData)) {
-            if (value != null && !(typeof value === "object" && Object.keys(value).length === 0)) {
-              reportData[key] = value;
+            // Store value if it's not null, or if it's a valid "none" string value
+            if (value != null || isNoneValue(value)) {
+              if (!(typeof value === "object" && value != null && Object.keys(value).length === 0)) {
+                reportData[key] = value;
+              }
             }
           }
           

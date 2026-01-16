@@ -178,13 +178,27 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
             rephraseQuestionArgs.previousConversation = previousConversation;
           }
 
-          const reformulatedQuestion = await this.aiService.rephraseQuestion(rephraseQuestionArgs);
-
-          const failMessage = await this.aiService.combineFailWithQuestion({
+          const combineFailArgs: {
+            fail: string;
+            question: string;
+            lang: SupportedLanguage;
+            currentDataState?: Record<string, any>;
+            previousConversation?: Array<{ question: string; answer: string }>;
+          } = {
             fail: questionTemplate.failTemplate,
-            question: reformulatedQuestion,
+            question: questionTemplate.questionTemplate,
             lang,
-          });
+          };
+
+          if (currentDataState) {
+            combineFailArgs.currentDataState = currentDataState;
+          }
+
+          if (previousConversation.length > 0) {
+            combineFailArgs.previousConversation = previousConversation;
+          }
+
+          const failMessage = await this.aiService.combineFailWithQuestion(combineFailArgs);
 
           return reply.code(200).send({
             message: failMessage,
@@ -233,7 +247,7 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         let nextQuestion: QuestionTemplate | null = null;
         let nextOrder = currentOrder + 1;
         const maxOrder = Math.max(...allQuestionTemplates.map((qt) => qt.order));
-        
+
         while (nextOrder <= maxOrder) {
           const candidateQuestion = await this.surveySessionService.getQuestionBySurveyIdAndOrder(
             survey.id,
@@ -245,13 +259,24 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           }
 
           // Check if this question's dataKey already has data
+          // Accept null only if it's explicitly set (not missing), but prefer non-null values
+          // Also accept string values like "none", "no", "нет", "нет проблем" as valid answers
+          const dataValue = updatedDataState?.[candidateQuestion.dataKey];
           const hasData =
             updatedDataState &&
             candidateQuestion.dataKey in updatedDataState &&
-            updatedDataState[candidateQuestion.dataKey] != null &&
+            (dataValue != null ||
+              // Accept explicit "none" / "no" / "нет" values as valid answers
+              (typeof dataValue === "string" &&
+                (dataValue.toLowerCase() === "none" ||
+                  dataValue.toLowerCase() === "no" ||
+                  dataValue.toLowerCase() === "нет" ||
+                  dataValue.toLowerCase().includes("нет проблем") ||
+                  dataValue.toLowerCase().includes("no problems")))) &&
             !(
-              typeof updatedDataState[candidateQuestion.dataKey] === "object" &&
-              Object.keys(updatedDataState[candidateQuestion.dataKey]).length === 0
+              typeof dataValue === "object" &&
+              dataValue != null &&
+              Object.keys(dataValue).length === 0
             );
 
           if (!hasData) {
@@ -263,12 +288,54 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           nextOrder++;
         }
 
-        // If there's no next question, end the session
-        if (!nextQuestion) {
+        // Check if all questions are answered (all dataKeys have data)
+        // This includes cases where user said "no problems" which should be extracted as "none" or similar
+        const isNoneValue = (val: any): boolean => {
+          if (val == null) return false;
+          if (typeof val === "string") {
+            const lower = val.toLowerCase();
+            return (
+              lower === "none" ||
+              lower === "no" ||
+              lower === "нет" ||
+              lower.includes("нет проблем") ||
+              lower.includes("no problems") ||
+              lower.includes("нет препятствий") ||
+              lower.includes("no obstacles")
+            );
+          }
+          return false;
+        };
+
+        const allDataKeysProvided = allDataKeys.every((key) => {
+          const value = updatedDataState?.[key];
+          // Value is provided if:
+          // 1. It's not null/undefined, OR
+          // 2. It's a valid "none" string value
+          const hasValue = value != null || isNoneValue(value);
+          // And it's not an empty object
+          const isNotEmptyObject = !(typeof value === "object" && value != null && Object.keys(value).length === 0);
+          return hasValue && isNotEmptyObject;
+        });
+
+        // If all questions are answered OR there's no next question, complete the survey
+        if (allDataKeysProvided || !nextQuestion) {
+          // Get the final question's success template if available
+          const finalQuestion = allQuestionTemplates.find((qt) => qt.final);
+          let completionMessage = "Thank you for completing the survey!";
+
+          if (finalQuestion) {
+            const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
+            completionMessage = await this.aiService.rephraseCompletion({
+              text: finalQuestion.successTemplate,
+              lang,
+            });
+          }
+
           await this.surveySessionService.endSession({ sessionId });
 
           return reply.code(200).send({
-            message: "Thank you for completing the survey!",
+            message: completionMessage,
             completed: true,
           });
         }
@@ -329,33 +396,28 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           // If we already acknowledged skipped data and combined with success template, use it directly
           finalMessage = questionToShow;
         } else {
-          // Normal flow: rephrase question and combine with success template
-          const rephraseNextQuestionArgs: {
+          // Normal flow: combine success template with next question (reformulation happens inside)
+          const combineArgs: {
+            success: string;
             question: string;
             lang: SupportedLanguage;
             currentDataState?: Record<string, any>;
             previousConversation?: Array<{ question: string; answer: string }>;
           } = {
+            success: questionTemplate.successTemplate,
             question: questionToShow,
             lang,
           };
 
           if (updatedDataState) {
-            rephraseNextQuestionArgs.currentDataState = updatedDataState;
+            combineArgs.currentDataState = updatedDataState;
           }
 
           if (updatedConversation.length > 0) {
-            rephraseNextQuestionArgs.previousConversation = updatedConversation;
+            combineArgs.previousConversation = updatedConversation;
           }
 
-          const reformulatedNextQuestion = await this.aiService.rephraseQuestion(rephraseNextQuestionArgs);
-
-          // Combine success template with next question
-          finalMessage = await this.aiService.combineSuccessWithQuestion({
-            success: questionTemplate.successTemplate,
-            question: reformulatedNextQuestion,
-            lang,
-          });
+          finalMessage = await this.aiService.combineSuccessWithQuestion(combineArgs);
         }
 
         logger.info({ sessionId, answerId: answer.id }, "Answer received and next question sent");

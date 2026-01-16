@@ -181,17 +181,36 @@ export class YandexImpl {
     success,
     question,
     lang,
+    currentDataState,
+    previousConversation,
   }: CombineSuccessWithQuestionArgs): Promise<string> {
     try {
       this.logger.info(
-        { success, question, lang },
+        { success, question, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Combining success with question",
       );
+
+      let input = `Success message: ${success}\n\nFollow-up question: ${question}`;
+
+      // Include current data state if available
+      if (currentDataState && Object.keys(currentDataState).length > 0) {
+        const dataStateJson = JSON.stringify(currentDataState, null, 2);
+        input = `Current data state:\n${dataStateJson}\n\n${input}`;
+      }
+
+      // Include previous conversation if available
+      if (previousConversation && previousConversation.length > 0) {
+        const conversationText = previousConversation
+          .map((item) => `Q: ${item.question}\nA: ${item.answer}`)
+          .join("\n\n");
+
+        input = `Previous conversation:\n${conversationText}\n\n${input}`;
+      }
 
       const response = await this.client.responses.create({
         model: `gpt://${this.yandexCloudFolder}/${this.yandexCloudModel}`,
         instructions: aiPrompts[lang].combineSuccessWithQuestion(success, question),
-        input: `Success message: ${success}\n\nFollow-up question: ${question}`,
+        input,
         temperature: 0.3,
         max_output_tokens: 500,
       });
@@ -215,14 +234,36 @@ export class YandexImpl {
     fail,
     question,
     lang,
+    currentDataState,
+    previousConversation,
   }: CombineFailWithQuestionArgs): Promise<string> {
     try {
-      this.logger.info({ fail, question, lang }, "Combining fail with question");
+      this.logger.info(
+        { fail, question, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        "Combining fail with question",
+      );
+
+      let input = `Failure message: ${fail}\n\nQuestion: ${question}`;
+
+      // Include current data state if available
+      if (currentDataState && Object.keys(currentDataState).length > 0) {
+        const dataStateJson = JSON.stringify(currentDataState, null, 2);
+        input = `Current data state:\n${dataStateJson}\n\n${input}`;
+      }
+
+      // Include previous conversation if available
+      if (previousConversation && previousConversation.length > 0) {
+        const conversationText = previousConversation
+          .map((item) => `Q: ${item.question}\nA: ${item.answer}`)
+          .join("\n\n");
+
+        input = `Previous conversation:\n${conversationText}\n\n${input}`;
+      }
 
       const response = await this.client.responses.create({
         model: `gpt://${this.yandexCloudFolder}/${this.yandexCloudModel}`,
         instructions: aiPrompts[lang].combineFailWithQuestion(fail, question),
-        input: `Failure message: ${fail}\n\nQuestion to repeat: ${question}`,
+        input,
         temperature: 0.3,
         max_output_tokens: 500,
       });
@@ -267,7 +308,15 @@ export class YandexImpl {
         hasConversation,
       );
 
-      let input = `Extract meaningful data from this text. Current question is asking for "${currentQuestionDataKey}", but extract ALL data that matches any of these keys: [${allDataKeys.join(", ")}]. Text: ${text}`;
+      let input = `Extract meaningful data from this text. Current question is asking for "${currentQuestionDataKey}", but extract ALL data that matches any of these keys: [${allDataKeys.join(", ")}]. 
+
+CRITICAL: If the user explicitly states there are NO problems, NO obstacles, or that everything is fine/clear/good, you MUST extract this as a meaningful string value like "none", "no", "no problems", "no obstacles", "нет", "нет проблем", or "нет препятствий" (NOT null). For example:
+- "no problems" → "no problems" or "none"
+- "проблем нет" → "нет проблем" or "нет"
+- "everything is clear" → "none" or "no problems"
+- "всё понятно" → "нет" or "нет проблем"
+
+Text: ${text}`;
 
       // Include current data state if available
       if (currentDataState && Object.keys(currentDataState).length > 0) {
@@ -329,15 +378,33 @@ export class YandexImpl {
 
         // Check if the currentQuestionDataKey field exists and is meaningful
         // But also accept if ANY dataKey has meaningful data
+        // Accept "none", "no", "нет", "нет проблем" as valid answers (not null)
+        const isNoneValue = (value: any): boolean => {
+          if (typeof value === "string") {
+            const lower = value.toLowerCase();
+            return (
+              lower === "none" ||
+              lower === "no" ||
+              lower === "нет" ||
+              lower.includes("нет проблем") ||
+              lower.includes("no problems")
+            );
+          }
+          return false;
+        };
+
         const hasCurrentKeyData =
-          extractedData[currentQuestionDataKey] != null &&
+          (extractedData[currentQuestionDataKey] != null || isNoneValue(extractedData[currentQuestionDataKey])) &&
           !(typeof extractedData[currentQuestionDataKey] === "object" &&
+            extractedData[currentQuestionDataKey] != null &&
             Object.keys(extractedData[currentQuestionDataKey]).length === 0);
 
         const hasAnyKeyData = allDataKeys.some(
           (key) =>
-            extractedData[key] != null &&
-            !(typeof extractedData[key] === "object" && Object.keys(extractedData[key]).length === 0),
+            (extractedData[key] != null || isNoneValue(extractedData[key])) &&
+            !(typeof extractedData[key] === "object" &&
+              extractedData[key] != null &&
+              Object.keys(extractedData[key]).length === 0),
         );
 
         if (!hasCurrentKeyData && !hasAnyKeyData) {
@@ -347,6 +414,42 @@ export class YandexImpl {
           );
 
           return null;
+        }
+
+        // Post-process: if user said "no problems" but AI extracted null, convert to "none"
+        // This handles cases where the AI didn't follow the instruction perfectly
+        const noProblemsIndicators = [
+          "no problems",
+          "no obstacles",
+          "нет проблем",
+          "нет препятствий",
+          "всё понятно",
+          "всё хорошо",
+          "everything is clear",
+          "everything is fine",
+          "опережаю график",
+          "ahead of schedule",
+        ];
+        const textLower = text.toLowerCase();
+        const hasNoProblemsIndicator = noProblemsIndicators.some((indicator) =>
+          textLower.includes(indicator.toLowerCase()),
+        );
+
+        // If text indicates "no problems" but roadblocks/obstacles dataKey is null, set it to "none"
+        for (const key of allDataKeys) {
+          if (
+            (key.toLowerCase().includes("roadblock") ||
+              key.toLowerCase().includes("obstacle") ||
+              key.toLowerCase().includes("препятстви")) &&
+            (extractedData[key] == null || extractedData[key] === "") &&
+            hasNoProblemsIndicator
+          ) {
+            extractedData[key] = lang === "ru" ? "нет" : "none";
+            this.logger.info(
+              { key, originalValue: extractedData[key], newValue: extractedData[key] },
+              "Converted null to 'none' for no-problems indicator",
+            );
+          }
         }
 
         this.logger.info(

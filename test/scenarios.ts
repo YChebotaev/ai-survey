@@ -1,5 +1,6 @@
 import request from "supertest";
 import pino from "pino";
+import pinoPretty from "pino-pretty";
 import knex, { type Knex } from "knex";
 import path from "path";
 import { createApp } from "../index";
@@ -94,9 +95,24 @@ describe("Scrum Daily Survey Scenarios", () => {
     // Seed the test database
     await seed(db);
     
+    // Create logger with pino-pretty stream for readable test output
+    // sync: true is required for Jest to properly display logs
+    const logger = pino(
+      {
+        level: process.env.LOG_LEVEL || "info",
+      },
+      pinoPretty({
+        sync: true,
+        colorize: true,
+        translateTime: "HH:MM:ss.l",
+        ignore: "pid,hostname",
+        singleLine: false,
+      }),
+    );
+
     app = await createApp({
       db,
-      logger: pino({ level: "silent" }),
+      logger,
     });
 
     await app.start({ host: "127.0.0.1", port: 0 });

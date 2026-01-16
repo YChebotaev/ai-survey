@@ -64,6 +64,13 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           // Initial question - no data state or conversation yet
         });
 
+        // Add initial agent question to conversation in report
+        await this.surveySessionService.addAgentQuestionToConversation({
+          sessionId: session.id,
+          questionId: question.id,
+          questionText: reformulatedQuestion,
+        });
+
         return reply.code(200).send({
           sessionId: session.id,
           question: reformulatedQuestion,
@@ -132,19 +139,30 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           survey.id,
         );
         const allDataKeys = allQuestionTemplates.map((qt) => qt.dataKey);
+        const allQuestionTypes = allQuestionTemplates.reduce(
+          (acc, qt) => {
+            acc[qt.dataKey] = qt.type;
+            return acc;
+          },
+          {} as Record<string, string>,
+        );
 
         // Extract data using AI service - extract ALL possible data
         const extractDataArgs: {
           text: string;
           currentQuestionDataKey: string;
+          currentQuestionType: string;
           allDataKeys: string[];
+          allQuestionTypes: Record<string, string>;
           lang: SupportedLanguage;
           currentDataState?: Record<string, any>;
           previousConversation?: Array<{ question: string; answer: string }>;
         } = {
           text: answerText,
           currentQuestionDataKey: questionTemplate.dataKey,
+          currentQuestionType: questionTemplate.type,
           allDataKeys,
+          allQuestionTypes,
           lang,
         };
 
@@ -241,13 +259,20 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
         });
 
         // Get updated data state after storing the answer
-        const updatedDataState = await this.surveySessionService.getCurrentReportData(sessionId);
+        const updatedDataStateRaw = await this.surveySessionService.getCurrentReportData(sessionId);
+        // Use flat data for backward compatibility with existing code
+        const updatedDataState = updatedDataStateRaw?._flatData || updatedDataStateRaw || {};
+        
+        // #region agent log
+        logger.info({ sessionId, currentOrder, updatedDataStateKeys: Object.keys(updatedDataState), updatedDataState, allQuestionTemplatesDataKeys: allQuestionTemplates.map(qt => qt.dataKey) }, "Checking for next question");
+        fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Survey.ts:268',message:'Checking for next question',data:{sessionId,currentOrder,updatedDataStateKeys:Object.keys(updatedDataState),updatedDataState,allQuestionTemplatesDataKeys:allQuestionTemplates.map(qt=>qt.dataKey)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         
         // Find the next question that doesn't have data yet
         let nextQuestion: QuestionTemplate | null = null;
         let nextOrder = currentOrder + 1;
         const maxOrder = Math.max(...allQuestionTemplates.map((qt) => qt.order));
-
+        
         while (nextOrder <= maxOrder) {
           const candidateQuestion = await this.surveySessionService.getQuestionBySurveyIdAndOrder(
             survey.id,
@@ -262,6 +287,12 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           // Accept null only if it's explicitly set (not missing), but prefer non-null values
           // Also accept string values like "none", "no", "нет", "нет проблем" as valid answers
           const dataValue = updatedDataState?.[candidateQuestion.dataKey];
+          
+          // #region agent log
+          logger.info({ sessionId, nextOrder, candidateQuestionDataKey: candidateQuestion.dataKey, dataValue, hasKeyInState: candidateQuestion.dataKey in updatedDataState, updatedDataState }, "Checking candidate question for data");
+          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Survey.ts:293',message:'Checking candidate question for data',data:{sessionId,nextOrder,candidateQuestionDataKey:candidateQuestion.dataKey,dataValue,hasKeyInState:candidateQuestion.dataKey in updatedDataState,updatedDataState},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          
           const hasData =
             updatedDataState &&
             candidateQuestion.dataKey in updatedDataState &&
@@ -278,6 +309,11 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
               dataValue != null &&
               Object.keys(dataValue).length === 0
             );
+
+          // #region agent log
+          logger.info({ sessionId, nextOrder, candidateQuestionDataKey: candidateQuestion.dataKey, hasData, dataValue }, "hasData check result");
+          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Survey.ts:315',message:'hasData check result',data:{sessionId,nextOrder,candidateQuestionDataKey:candidateQuestion.dataKey,hasData,dataValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
 
           if (!hasData) {
             nextQuestion = candidateQuestion;
@@ -307,8 +343,16 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
           return false;
         };
 
+        // Check using the new report structure (data array) or fallback to flat data
+        const reportData = updatedDataStateRaw;
+        const dataArray = reportData?.data || [];
+        const flatDataForCheck = updatedDataState || {};
+
         const allDataKeysProvided = allDataKeys.every((key) => {
-          const value = updatedDataState?.[key];
+          // Try to find in data array first
+          const dataEntry = dataArray.find((d: any) => d.key === key);
+          const value = dataEntry?.value || flatDataForCheck[key];
+          
           // Value is provided if:
           // 1. It's not null/undefined, OR
           // 2. It's a valid "none" string value
@@ -419,6 +463,13 @@ export class SurveyPlugin extends BaseFastifyPlugin<SurveyPluginOptions> {
 
           finalMessage = await this.aiService.combineSuccessWithQuestion(combineArgs);
         }
+
+        // Add agent question to conversation in report
+        await this.surveySessionService.addAgentQuestionToConversation({
+          sessionId,
+          questionId: nextQuestion.id,
+          questionText: finalMessage,
+        });
 
         logger.info({ sessionId, answerId: answer.id }, "Answer received and next question sent");
 

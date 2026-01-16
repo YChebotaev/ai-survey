@@ -286,14 +286,16 @@ export class YandexImpl {
   public async extractData({
     text,
     currentQuestionDataKey,
+    currentQuestionType,
     allDataKeys,
+    allQuestionTypes,
     lang,
     currentDataState,
     previousConversation,
   }: ExtractDataArgs): Promise<Record<string, any> | null> {
     try {
       this.logger.info(
-        { text, currentQuestionDataKey, allDataKeys, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { text, currentQuestionDataKey, currentQuestionType, allDataKeys, allQuestionTypes, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Extracting data",
       );
 
@@ -303,12 +305,26 @@ export class YandexImpl {
       const instructions = aiPrompts[lang].extractData(
         text,
         currentQuestionDataKey,
+        currentQuestionType,
         allDataKeys,
+        allQuestionTypes,
         hasDataState,
         hasConversation,
       );
 
-      let input = `Extract meaningful data from this text. Current question is asking for "${currentQuestionDataKey}", but extract ALL data that matches any of these keys: [${allDataKeys.join(", ")}]. 
+      // For "freeform" type, extract the entire text as-is for the current question, but still extract other dataKeys
+      let extractionInstruction = "";
+      if (currentQuestionType === "freeform") {
+        extractionInstruction = `CRITICAL INSTRUCTIONS:
+1. For the current question's dataKey "${currentQuestionDataKey}" (type: "freeform"): Extract the ENTIRE answer text as-is. Do not summarize, rephrase, or extract specific parts - use the full text: "${text}"
+2. For ALL OTHER dataKeys in [${allDataKeys.filter(k => k !== currentQuestionDataKey).join(", ")}]: Extract meaningful data from the same text as you normally would. The user's response may contain information for multiple questions at once.
+
+IMPORTANT: Even though the current question is "freeform", you MUST still extract data for ALL other dataKeys that appear in the text.`;
+      } else {
+        extractionInstruction = `Extract meaningful data from this text. Current question is asking for "${currentQuestionDataKey}" with type "${currentQuestionType}", but extract ALL data that matches any of these keys: [${allDataKeys.join(", ")}].`;
+      }
+
+      let input = `${extractionInstruction}
 
 CRITICAL: If the user explicitly states there are NO problems, NO obstacles, or that everything is fine/clear/good, you MUST extract this as a meaningful string value like "none", "no", "no problems", "no obstacles", "нет", "нет проблем", or "нет препятствий" (NOT null). For example:
 - "no problems" → "no problems" or "none"
@@ -333,6 +349,10 @@ Text: ${text}`;
         input = `Previous conversation:\n${conversationText}\n\n${input}`;
       }
 
+      // #region agent log
+      this.logger.info({ instructions, input, currentQuestionDataKey, allDataKeys }, "Sending extraction request to AI");
+      // #endregion
+      
       const response = await this.client.responses.create({
         model: `gpt://${this.yandexCloudFolder}/${this.yandexCloudModel}`,
         instructions,
@@ -342,6 +362,10 @@ Text: ${text}`;
       });
 
       const outputText = response.output_text;
+      
+      // #region agent log
+      this.logger.info({ outputText, currentQuestionDataKey, allDataKeys }, "Received extraction response from AI");
+      // #endregion
 
       if (!outputText) {
         this.logger.warn(
@@ -414,6 +438,99 @@ Text: ${text}`;
           );
 
           return null;
+        }
+
+        // Post-process: Handle "freeform" type - if current question is freeform and data wasn't extracted, use full text
+        if (currentQuestionType === "freeform") {
+          if (extractedData[currentQuestionDataKey] == null || extractedData[currentQuestionDataKey] === "") {
+            extractedData[currentQuestionDataKey] = text;
+            this.logger.info(
+              { key: currentQuestionDataKey, type: currentQuestionType },
+              "Extracted full text for freeform type",
+            );
+          }
+          
+          // Post-process: Try to extract other dataKeys from the text when AI returned null
+          // This is a fallback when the AI doesn't extract data for other keys
+          this.logger.info(
+            { currentQuestionDataKey, allDataKeys, extractedData, text },
+            "Starting fallback pattern matching for freeform type",
+          );
+          
+          for (const key of allDataKeys) {
+            if (key === currentQuestionDataKey) continue; // Skip current question
+            
+            // Only try fallback if AI returned null
+            if (extractedData[key] == null || extractedData[key] === "") {
+              // Try to find relevant text patterns for common dataKeys
+              const textLower = text.toLowerCase();
+              const keyLower = key.toLowerCase();
+              
+              this.logger.info(
+                { key, keyLower, textLower, text },
+                "Attempting fallback extraction for key",
+              );
+              
+              // For "todayPlan" or similar keys, look for patterns like "сегодня", "today", "планирую", "plan"
+              if (keyLower.includes("today") || keyLower.includes("plan") || keyLower.includes("планиру")) {
+                // Look for sentences containing "today", "сегодня", "plan", "планирую"
+                // Improved patterns that match the full sentence
+                const todayPatterns = [
+                  /(?:сегодня|today)[^.]*(?:планирую|plan|сделаю|will|going to)[^.]*/gi,
+                  /(?:планирую|plan|сделаю|will|going to)[^.]*(?:сегодня|today)[^.]*/gi,
+                  /сегодня[^.]*планирую[^.]*/gi,
+                  /today[^.]*plan[^.]*/gi,
+                ];
+                
+                for (const pattern of todayPatterns) {
+                  const match = text.match(pattern);
+                  this.logger.info(
+                    { key, pattern: pattern.toString(), match: match?.[0] },
+                    "Testing today pattern",
+                  );
+                  if (match && match[0]) {
+                    extractedData[key] = match[0].trim();
+                    this.logger.info(
+                      { key, extractedValue: extractedData[key], method: "fallback-pattern-matching" },
+                      "Extracted data using fallback pattern matching",
+                    );
+                    break;
+                  }
+                }
+              }
+              
+              // For "yesterdayWork" or similar keys, look for patterns like "вчера", "yesterday"
+              if (keyLower.includes("yesterday") || keyLower.includes("вчера") || keyLower.includes("work")) {
+                const yesterdayPatterns = [
+                  /(?:вчера|yesterday)[^.]*(?:работал|worked|делал|did)[^.]*/gi,
+                  /(?:работал|worked|делал|did)[^.]*(?:вчера|yesterday)[^.]*/gi,
+                  /вчера[^.]*работал[^.]*/gi,
+                  /yesterday[^.]*worked[^.]*/gi,
+                ];
+                
+                for (const pattern of yesterdayPatterns) {
+                  const match = text.match(pattern);
+                  this.logger.info(
+                    { key, pattern: pattern.toString(), match: match?.[0] },
+                    "Testing yesterday pattern",
+                  );
+                  if (match && match[0]) {
+                    extractedData[key] = match[0].trim();
+                    this.logger.info(
+                      { key, extractedValue: extractedData[key], method: "fallback-pattern-matching" },
+                      "Extracted data using fallback pattern matching",
+                    );
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          this.logger.info(
+            { extractedDataAfterFallback: extractedData },
+            "Completed fallback pattern matching",
+          );
         }
 
         // Post-process: if user said "no problems" but AI extracted null, convert to "none"

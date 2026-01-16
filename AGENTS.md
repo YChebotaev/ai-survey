@@ -561,3 +561,45 @@ Logic is following:
 4. If question with `final` flag, the `successTemplate` are rephrased using `rephraseCompletion`
 
 For now, for mocking purposes combine messages with just an empty newline. If message are just rephrased, just return passed text
+
+# Report shape
+
+```typescript
+{
+  conversation: [
+    {
+       id: string, // random id
+       author: string // "agent" | "client"
+       text: string // Text of question if author agent and answer if author client
+       dataId?: string // And id of record in "data" array in same report
+       questionId?: // If author agent
+       answerId?: // If author client
+    }
+  ],
+  data: [
+    {
+       id: string // random id
+       key: string // dataKey,
+       value: string,
+       type: string // Type of the question, "freeform" or "extracted" for now
+    }
+  ]
+}
+```
+
+In contrary with question type, "type" of data record may be (for now):
+
+1. "freeform" when all data of the reply goes into data
+2. "extracted" when only portion of reply fills data
+
+"freeform"'s "key" alsways unqie within array
+
+But "extracted" may have duplicate keys but different ids
+
+For example:
+
+In this scrum scenario if user answer questions one by one, his answers goes as freeform data records and it's ok
+
+But if client provides all necessary data in first message, all of the records will be type: "extracted" and may be duplicated keys if user have much to say
+
+In case if user provides yesterdayWork and todayPlan in first reply, then waits for question about roadblock and ansers it in the second reply, the first two data should be type extracted and last (roadblock) should be freeform

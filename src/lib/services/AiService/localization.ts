@@ -10,13 +10,15 @@ export type AiPromptLocalization = {
   rephraseCompletion: (text: string) => string;
   combineSuccessWithQuestion: (success: string, question: string) => string;
   combineFailWithQuestion: (fail: string, question: string) => string;
-  extractData: (
-    text: string,
-    currentQuestionDataKey: string,
-    allDataKeys: string[],
-    hasDataState: boolean,
-    hasConversation: boolean,
-  ) => string;
+    extractData: (
+      text: string,
+      currentQuestionDataKey: string,
+      currentQuestionType: string,
+      allDataKeys: string[],
+      allQuestionTypes: Record<string, string>,
+      hasDataState: boolean,
+      hasConversation: boolean,
+    ) => string;
 };
 
 export const aiPrompts: Record<SupportedLanguage, AiPromptLocalization> = {
@@ -45,24 +47,41 @@ export const aiPrompts: Record<SupportedLanguage, AiPromptLocalization> = {
     extractData: (
       text: string,
       currentQuestionDataKey: string,
+      currentQuestionType: string,
       allDataKeys: string[],
+      allQuestionTypes: Record<string, string>,
       hasDataState: boolean,
       hasConversation: boolean,
     ) => {
       const allDataKeysList = allDataKeys.map((key) => `"${key}"`).join(", ");
+      const typeInstructions = Object.entries(allQuestionTypes)
+        .map(([key, type]) => {
+          if (type === "freeform") {
+            return `- "${key}": type is "freeform" - extract the ENTIRE answer text as-is for this key`;
+          }
+          return `- "${key}": type is "${type}"`;
+        })
+        .join("\n");
+
+      const otherDataKeys = allDataKeys.filter(k => k !== currentQuestionDataKey);
+      const otherDataKeysList = otherDataKeys.map((key) => `"${key}"`).join(", ");
+      
       let prompt = `You are a helpful assistant that extracts meaningful data from user responses. The user is answering a survey question, but they may provide information for multiple fields at once.
 
-The current question is asking for data under the key "${currentQuestionDataKey}".
+The current question is asking for data under the key "${currentQuestionDataKey}" with type "${currentQuestionType}".
 
 However, the user's response may contain information for ANY of the following data keys: [${allDataKeysList}].
 
-Extract ALL possible data from the user's text that matches ANY of these data keys. Return a JSON object where each data key that has meaningful information is included with its extracted value.
+Question types and extraction rules:
+${typeInstructions}
 
 IMPORTANT RULES:
-1. If the user explicitly states there are NO problems, NO obstacles, or that everything is fine/clear, extract this as a meaningful value like "none", "no", "no problems", or "no obstacles" (NOT null).
-2. If the user provides positive information (e.g., "ahead of schedule", "everything is clear"), this can also indicate no obstacles - extract it as "none" or a similar positive indicator.
-3. Your response MUST contain the extracted data. If the user's response does not contain meaningful information for a particular data key, you MUST return null for that field. However, if the user explicitly states there are no problems/obstacles, you MUST extract this as a non-null value (like "none" or "no").
-4. If the user provides meaningful information for any data key, you MUST extract it and return it in the JSON format. Return only valid JSON, no additional text.`;
+1. For "freeform" type questions: For the CURRENT question's dataKey ("${currentQuestionDataKey}"), extract the ENTIRE answer text as-is. Do not summarize, rephrase, or extract specific parts - use the full text the user provided.
+2. CRITICAL: Even if the current question is "freeform", you MUST STILL extract data for ALL OTHER dataKeys (${otherDataKeysList ? `[${otherDataKeysList}]` : "none"}) from the same text. The user may provide answers to multiple questions in a single response.
+3. If the user explicitly states there are NO problems, NO obstacles, or that everything is fine/clear, extract this as a meaningful value like "none", "no", "no problems", or "no obstacles" (NOT null).
+4. If the user provides positive information (e.g., "ahead of schedule", "everything is clear"), this can also indicate no obstacles - extract it as "none" or a similar positive indicator.
+5. Your response MUST contain the extracted data. If the user's response does not contain meaningful information for a particular data key, you MUST return null for that field. However, if the user explicitly states there are no problems/obstacles, you MUST extract this as a non-null value (like "none" or "no").
+6. If the user provides meaningful information for any data key, you MUST extract it and return it in the JSON format. Return only valid JSON, no additional text.`;
       return prompt;
     },
   },
@@ -91,24 +110,41 @@ IMPORTANT RULES:
     extractData: (
       text: string,
       currentQuestionDataKey: string,
+      currentQuestionType: string,
       allDataKeys: string[],
+      allQuestionTypes: Record<string, string>,
       hasDataState: boolean,
       hasConversation: boolean,
     ) => {
       const allDataKeysList = allDataKeys.map((key) => `"${key}"`).join(", ");
+      const typeInstructions = Object.entries(allQuestionTypes)
+        .map(([key, type]) => {
+          if (type === "freeform") {
+            return `- "${key}": тип "freeform" - извлеките ВЕСЬ текст ответа как есть для этого ключа`;
+          }
+          return `- "${key}": тип "${type}"`;
+        })
+        .join("\n");
+
+      const otherDataKeys = allDataKeys.filter(k => k !== currentQuestionDataKey);
+      const otherDataKeysList = otherDataKeys.map((key) => `"${key}"`).join(", ");
+      
       let prompt = `Вы полезный помощник, который извлекает значимые данные из ответов пользователей. Пользователь отвечает на вопрос опроса, но может предоставить информацию для нескольких полей одновременно.
 
-Текущий вопрос запрашивает данные под ключом "${currentQuestionDataKey}".
+Текущий вопрос запрашивает данные под ключом "${currentQuestionDataKey}" с типом "${currentQuestionType}".
 
 Однако, ответ пользователя может содержать информацию для ЛЮБОГО из следующих ключей данных: [${allDataKeysList}].
 
-Извлеките ВСЕ возможные данные из текста пользователя, которые соответствуют ЛЮБОМУ из этих ключей данных. Верните JSON объект, где каждый ключ данных, для которого есть значимая информация, включен с его извлеченным значением.
+Типы вопросов и правила извлечения:
+${typeInstructions}
 
 ВАЖНЫЕ ПРАВИЛА:
-1. Если пользователь явно указывает, что НЕТ проблем, НЕТ препятствий, или что всё хорошо/понятно, извлеките это как значимое значение, например "нет", "нет проблем", "нет препятствий" или "всё хорошо" (НЕ null).
-2. Если пользователь предоставляет положительную информацию (например, "опережаю график", "всё понятно"), это также может указывать на отсутствие препятствий - извлеките это как "нет" или аналогичный положительный индикатор.
-3. Ваш ответ ДОЛЖЕН содержать извлеченные данные. Если ответ пользователя не содержит значимой информации для конкретного ключа данных, вы ДОЛЖНЫ вернуть null для этого поля. Однако, если пользователь явно указывает, что нет проблем/препятствий, вы ДОЛЖНЫ извлечь это как ненулевое значение (например, "нет" или "нет проблем").
-4. Если пользователь предоставляет значимую информацию для любого ключа данных, вы ДОЛЖНЫ извлечь её и вернуть в формате JSON. Возвращайте только валидный JSON, без дополнительного текста.`;
+1. Для вопросов типа "freeform": Для ТЕКУЩЕГО вопроса с ключом "${currentQuestionDataKey}" извлеките ВЕСЬ текст ответа как есть. Не суммируйте, не перефразируйте и не извлекайте отдельные части - используйте полный текст, который предоставил пользователь.
+2. КРИТИЧЕСКИ ВАЖНО: Даже если текущий вопрос имеет тип "freeform", вы ДОЛЖНЫ ВСЕ РАВНО извлекать данные для ВСЕХ ДРУГИХ ключей данных (${otherDataKeysList ? `[${otherDataKeysList}]` : "нет"}) из того же текста. Пользователь может предоставить ответы на несколько вопросов в одном сообщении.
+3. Если пользователь явно указывает, что НЕТ проблем, НЕТ препятствий, или что всё хорошо/понятно, извлеките это как значимое значение, например "нет", "нет проблем", "нет препятствий" или "всё хорошо" (НЕ null).
+4. Если пользователь предоставляет положительную информацию (например, "опережаю график", "всё понятно"), это также может указывать на отсутствие препятствий - извлеките это как "нет" или аналогичный положительный индикатор.
+5. Ваш ответ ДОЛЖЕН содержать извлеченные данные. Если ответ пользователя не содержит значимой информации для конкретного ключа данных, вы ДОЛЖНЫ вернуть null для этого поля. Однако, если пользователь явно указывает, что нет проблем/препятствий, вы ДОЛЖНЫ извлечь это как ненулевое значение (например, "нет" или "нет проблем").
+6. Если пользователь предоставляет значимую информацию для любого ключа данных, вы ДОЛЖНЫ извлечь её и вернуть в формате JSON. Возвращайте только валидный JSON, без дополнительного текста.`;
       return prompt;
     },
   },

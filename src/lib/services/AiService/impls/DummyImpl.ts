@@ -96,21 +96,25 @@ export class DummyImpl {
   public async extractData({
     text,
     currentQuestionDataKey,
+    currentQuestionType,
     allDataKeys,
+    allQuestionTypes,
     lang,
     currentDataState,
     previousConversation,
   }: ExtractDataArgs): Promise<Record<string, any> | null> {
     try {
       this.logger.info(
-        { text, currentQuestionDataKey, allDataKeys, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
+        { text, currentQuestionDataKey, currentQuestionType, allDataKeys, allQuestionTypes, lang, hasDataState: !!currentDataState, conversationLength: previousConversation?.length },
         "Extracting data",
       );
 
       // For now, mock implementation - return data (will be stored by dataKey in report)
       // Dummy implementation accepts params but does nothing with them
+      // For freeform type, return full text; otherwise return as-is
+      const value = currentQuestionType === "freeform" ? text : text;
       return {
-        [currentQuestionDataKey]: text,
+        [currentQuestionDataKey]: value,
       };
     } catch (error) {
       this.logger.error(error, "Failed to extract data");

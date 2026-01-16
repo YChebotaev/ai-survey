@@ -153,12 +153,18 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         }
       }
 
+      // Initialize report with new structure: conversation and data arrays
+      const initialReportData = {
+        conversation: [],
+        data: [],
+      };
+
       const report = await this.sessionReportsRepository.create({
         accountId: survey.accountId,
         projectId: survey.projectId,
         surveyId: survey.id,
         sessionId: session.id,
-        data: JSON.stringify({}),
+        data: JSON.stringify(initialReportData),
       });
 
       if (!report) {
@@ -291,10 +297,29 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         
         if (questionTemplate) {
           const reportData = JSON.parse(report.data);
+          
+          // Ensure report has the new structure
+          if (!reportData.conversation) {
+            reportData.conversation = [];
+          }
+          if (!reportData.data) {
+            reportData.data = [];
+          }
+
           const extractedData = JSON.parse(answerData);
           
-          // Store ALL extracted data (not just the current question's dataKey)
-          // This allows extracting multiple dataKeys from a single answer
+          // Get all question templates to find types for each dataKey
+          const session = await this.surveySessionsRepository.getById(sessionId);
+          if (!session) {
+            throw new Error(`Session with id ${sessionId} not found`);
+          }
+          const allQuestionTemplates = await this.questionTemplatesRepository.findBySurveyId(session.surveyId);
+          
+          // Helper to generate random IDs
+          const generateId = (): string => {
+            return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+          };
+
           // Accept "none", "no", "нет", "нет проблем" as valid values (not null)
           const isNoneValue = (val: any): boolean => {
             if (typeof val === "string") {
@@ -310,25 +335,103 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
             return false;
           };
 
+          // Store ALL extracted data in the new format
+          // Determine if data is "freeform" (direct answer to current question) or "extracted" (AI extracted from other questions)
+          const currentQuestionDataKey = questionTemplate.dataKey;
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:340',message:'Storing extracted data',data:{sessionId,questionId,currentQuestionDataKey,extractedDataKeys:Object.keys(extractedData),extractedData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+          
           for (const [key, value] of Object.entries(extractedData)) {
             // Store value if it's not null, or if it's a valid "none" string value
             if (value != null || isNoneValue(value)) {
               if (!(typeof value === "object" && value != null && Object.keys(value).length === 0)) {
-                reportData[key] = value;
+                // Determine data record type:
+                // - "freeform": if this is the dataKey for the current question being answered (direct answer)
+                // - "extracted": if this is a different dataKey (AI extracted from a message not specifically for this question)
+                const isCurrentQuestion = key === currentQuestionDataKey;
+                const dataRecordType = isCurrentQuestion ? "freeform" : "extracted";
+                
+                if (dataRecordType === "freeform") {
+                  // For "freeform": ensure uniqueness - update existing or create new
+                  const existingDataIndex = reportData.data.findIndex(
+                    (d: any) => d.key === key && d.type === "freeform"
+                  );
+                  
+                  if (existingDataIndex >= 0) {
+                    // Update existing freeform entry (should be unique per key)
+                    reportData.data[existingDataIndex].value = String(value);
+                  } else {
+                    // Create new freeform entry
+                    const dataId = generateId();
+                    reportData.data.push({
+                      id: dataId,
+                      key,
+                      value: String(value),
+                      type: "freeform",
+                    });
+                  }
+                } else {
+                  // For "extracted": always create new entry (allow duplicates with same key but different ids)
+                  const dataId = generateId();
+                  reportData.data.push({
+                    id: dataId,
+                    key,
+                    value: String(value),
+                    type: "extracted",
+                  });
+                  // #region agent log
+                  fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:379',message:'Created extracted data entry',data:{sessionId,key,value,dataId,dataArrayLength:reportData.data.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
+                }
+              }
+            }
+          }
+
+          // Add client answer to conversation
+          const answerConversationId = generateId();
+          // Find data entries for all keys that were extracted
+          // For freeform, find the unique entry; for extracted, find the most recent one
+          const answerDataIds: string[] = [];
+          for (const [key, value] of Object.entries(extractedData)) {
+            if (value != null || isNoneValue(value)) {
+              if (!(typeof value === "object" && value != null && Object.keys(value).length === 0)) {
+                const isCurrentQuestion = key === currentQuestionDataKey;
+                let dataEntry;
+                
+                if (isCurrentQuestion) {
+                  // For freeform, find the unique entry
+                  dataEntry = reportData.data.find((d: any) => d.key === key && d.type === "freeform");
+                } else {
+                  // For extracted, find the most recent one (last in array)
+                  const extractedEntries = reportData.data.filter((d: any) => d.key === key && d.type === "extracted");
+                  dataEntry = extractedEntries[extractedEntries.length - 1];
+                }
+                
+                if (dataEntry) {
+                  answerDataIds.push(dataEntry.id);
+                }
               }
             }
           }
           
-          // Store raw input from user (not from AI)
-          if (!reportData._rawInputs) {
-            reportData._rawInputs = {};
-          }
-          reportData._rawInputs[questionTemplate.dataKey] = answerText;
+          reportData.conversation.push({
+            id: answerConversationId,
+            author: "client",
+            text: answerText,
+            dataId: answerDataIds.length > 0 ? answerDataIds[0] : undefined, // Primary dataId (first one)
+            answerId: answer.id,
+          });
 
           await this.sessionReportsRepository.updateBySessionId(
             sessionId,
             JSON.stringify(reportData),
           );
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:420',message:'Report updated after storing data',data:{sessionId,dataArrayLength:reportData.data.length,dataEntries:reportData.data.map((d:any)=>({key:d.key,type:d.type,value:d.value}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
         }
       }
 
@@ -452,6 +555,36 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
     sessionId: number,
   ): Promise<Array<{ question: string; answer: string }>> {
     try {
+      // Try to get from new report structure first
+      const report = await this.sessionReportsRepository.findBySessionId(sessionId);
+      if (report) {
+        try {
+          const reportData = JSON.parse(report.data);
+          if (reportData.conversation && Array.isArray(reportData.conversation)) {
+            // Convert new format to old format for backward compatibility
+            const conversation: Array<{ question: string; answer: string }> = [];
+            let currentQuestion: string | null = null;
+
+            for (const msg of reportData.conversation) {
+              if (msg.author === "agent") {
+                currentQuestion = msg.text;
+              } else if (msg.author === "client" && currentQuestion) {
+                conversation.push({
+                  question: currentQuestion,
+                  answer: msg.text,
+                });
+                currentQuestion = null;
+              }
+            }
+
+            return conversation;
+          }
+        } catch (parseError) {
+          // Fall through to old method
+        }
+      }
+
+      // Fallback to old method using session questions and answers
       const questions = await this.sessionQuestionsRepository.findBySessionId(sessionId);
       const answers = await this.sessionAnswersRepository.findBySessionId(sessionId);
 
@@ -487,7 +620,38 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       }
 
       try {
-        return JSON.parse(report.data);
+        const reportData = JSON.parse(report.data);
+        
+        // For backward compatibility, also provide a flat data structure
+        // Convert data array to flat object for easy access
+        // Priority: "freeform" entries override "extracted" entries for the same key
+        const flatData: Record<string, any> = {};
+        if (reportData.data && Array.isArray(reportData.data)) {
+          // First pass: collect all entries, prioritizing freeform over extracted
+          const entriesByKey: Record<string, { value: any; type: string }> = {};
+          for (const dataEntry of reportData.data) {
+            const existing = entriesByKey[dataEntry.key];
+            // If no existing entry, or existing is "extracted" and current is "freeform", use current
+            if (!existing || (existing.type === "extracted" && dataEntry.type === "freeform")) {
+              entriesByKey[dataEntry.key] = { value: dataEntry.value, type: dataEntry.type };
+            }
+          }
+          // Build flatData from prioritized entries
+          for (const [key, entry] of Object.entries(entriesByKey)) {
+            flatData[key] = entry.value;
+          }
+        }
+        
+        // #region agent log
+        this.logger.info({ sessionId, flatDataKeys: Object.keys(flatData), flatData, dataArrayLength: reportData.data?.length || 0 }, "Built _flatData from report");
+        fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:640',message:'Building _flatData from report',data:{sessionId,dataArrayLength:reportData.data?.length||0,dataEntries:reportData.data?.map((d:any)=>({key:d.key,type:d.type,value:d.value}))||[],flatDataKeys:Object.keys(flatData),flatData},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        
+        // Return both the structured report and flat data for backward compatibility
+        return {
+          ...reportData,
+          _flatData: flatData, // For backward compatibility
+        };
       } catch (error) {
         this.logger.error({ error, sessionId }, "Failed to parse report data");
 
@@ -497,6 +661,55 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       this.logger.error(error, "Failed to get current report data");
 
       return null;
+    }
+  }
+
+  public async addAgentQuestionToConversation({
+    sessionId,
+    questionId,
+    questionText,
+  }: {
+    sessionId: number;
+    questionId: number;
+    questionText: string;
+  }): Promise<void> {
+    try {
+      const report = await this.sessionReportsRepository.findBySessionId(sessionId);
+
+      if (!report) {
+        return;
+      }
+
+      const reportData = JSON.parse(report.data);
+      
+      // Ensure report has the new structure
+      if (!reportData.conversation) {
+        reportData.conversation = [];
+      }
+      if (!reportData.data) {
+        reportData.data = [];
+      }
+
+      // Helper to generate random IDs
+      const generateId = (): string => {
+        return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      };
+
+      // Add agent question to conversation
+      const questionConversationId = generateId();
+      reportData.conversation.push({
+        id: questionConversationId,
+        author: "agent",
+        text: questionText,
+        questionId,
+      });
+
+      await this.sessionReportsRepository.updateBySessionId(
+        sessionId,
+        JSON.stringify(reportData),
+      );
+    } catch (error) {
+      this.logger.error(error, "Failed to add agent question to conversation");
     }
   }
 

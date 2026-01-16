@@ -6,6 +6,7 @@ import type {
   CombineSuccessWithQuestionArgs,
   CombineFailWithQuestionArgs,
   ExtractDataArgs,
+  DecideNextQuestionArgs,
 } from "../types";
 import { aiPrompts } from "../localization";
 
@@ -596,5 +597,131 @@ Text: ${text}`;
 
       return null;
     }
+  }
+
+  public async decideNextQuestion({
+    clientMessage,
+    allQuestions,
+    currentReportData,
+    lang,
+  }: DecideNextQuestionArgs): Promise<{ questionId: number | null; message: string; completed: boolean }> {
+    try {
+      this.logger.info(
+        { allQuestionsCount: allQuestions.length, dataCount: currentReportData.data.length, lang },
+        "Deciding next question using YandexGPT",
+      );
+
+      const prompt = aiPrompts[lang].decideNextQuestion(allQuestions, currentReportData);
+
+      const completion = await this.client.chat.completions.create({
+        model: this.yandexCloudModel,
+        messages: [
+          {
+            role: "system",
+            content: prompt,
+          },
+          {
+            role: "user",
+            content: `Client's latest message: "${clientMessage}"\n\nBased on the rules and current state, decide which question to ask next. Return only valid JSON.`,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+      });
+
+      const responseText = completion.choices[0]?.message?.content?.trim();
+
+      if (!responseText) {
+        this.logger.warn("Empty response from YandexGPT for decideNextQuestion");
+        
+        // Fallback to simple logic
+        return this.fallbackDecideNextQuestion(allQuestions);
+      }
+
+      const normalizedJson = this.normalizeJsonString(responseText);
+
+      if (!normalizedJson) {
+        this.logger.warn({ responseText }, "Failed to normalize JSON response from YandexGPT");
+        
+        return this.fallbackDecideNextQuestion(allQuestions);
+      }
+
+      try {
+        const result = JSON.parse(normalizedJson) as { questionId: number | null; message: string; completed: boolean };
+
+        if (typeof result.questionId !== "number" && result.questionId !== null) {
+          throw new Error("Invalid questionId type");
+        }
+
+        if (typeof result.message !== "string") {
+          throw new Error("Invalid message type");
+        }
+
+        if (typeof result.completed !== "boolean") {
+          throw new Error("Invalid completed type");
+        }
+
+        this.logger.info(
+          { questionId: result.questionId, completed: result.completed, messageLength: result.message.length },
+          "Successfully decided next question",
+        );
+
+        return result;
+      } catch (parseError) {
+        this.logger.error({ parseError, normalizedJson }, "Failed to parse decideNextQuestion response");
+        
+        return this.fallbackDecideNextQuestion(allQuestions);
+      }
+    } catch (error) {
+      this.logger.error(error, "Failed to decide next question");
+
+      return this.fallbackDecideNextQuestion(allQuestions);
+    }
+  }
+
+  private fallbackDecideNextQuestion(
+    allQuestions: DecideNextQuestionArgs["allQuestions"],
+  ): { questionId: number | null; message: string; completed: boolean } {
+    // Simple fallback logic: find first question without data, in order
+    let nextQuestion = null;
+    let previousQuestion = null;
+
+    for (const question of allQuestions) {
+      const hasData = question.collectedData && question.collectedData.length > 0;
+      
+      if (!hasData && nextQuestion == null) {
+        nextQuestion = question;
+      }
+      
+      if (hasData) {
+        previousQuestion = question;
+      }
+    }
+
+    if (nextQuestion == null) {
+      // All questions answered
+      const lastQuestion = allQuestions[allQuestions.length - 1];
+      const completionMessage = lastQuestion?.final 
+        ? lastQuestion.successTemplate 
+        : "Thank you! Survey completed.";
+
+      return {
+        questionId: null,
+        message: completionMessage,
+        completed: true,
+      };
+    }
+
+    // Combine previous success template with next question
+    let message = nextQuestion.questionTemplate;
+    if (previousQuestion && previousQuestion.successTemplate) {
+      message = `${previousQuestion.successTemplate}\n\n${nextQuestion.questionTemplate}`;
+    }
+
+    return {
+      questionId: nextQuestion.id,
+      message,
+      completed: false,
+    };
   }
 }

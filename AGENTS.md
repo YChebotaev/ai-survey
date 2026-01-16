@@ -444,19 +444,46 @@ AccountMembership(id, accountId, userId, role = "admin" | "owner")
 AccountInvite(id, accountId, email, phone, telegram)
 Project(id, accountId, name)
 ProjectMembership(id, accountId, userId, projectId, role = "admin" | "owner")
-Survey(id, accountId, projectId, externalId /* Special token which with client are integrated by */)
-QuestionTemplate(id, accountId, projectId, order, questionTemplate, successTemplate, failTemplate, final: boolean, type = "freeform")
+Survey(id, accountId, projectId, externalId /* Special token which with client are integrated by */, lang)
+QuestionTemplate(
+  id,
+  accountId,
+  projectId,
+  order,
+  surveyId,
+  questionTemplate,
+  successTemplate,
+  failTemplate,
+  final: boolean,
+  type = "freeform",
+)
 SurveySession(id, accountId, projectId, surveyId, sessionState: JSON)
-SessionQuestion(id, accountId, projectId, surveyId, sessionId, questionId, questionText)
-SessionAnswer(id, accountId, projectId, surveyId, sessionId, questionId, answerText, answerData: JSON)
-SessionReport(id, accountId, projectId, surveyId, sessionId, data: JSON /* All the data gathered within session combined */)
+SessionMessage(
+  id,
+  accountId
+  projectId
+  surveyId
+  sessionId
+  order: number // Index within session. From 0 to initial agent's message
+  partialReport: JSON
+  author: "agent" | "client"
+  text: string
+)
+SessionReport(
+  id,
+  accountId,
+  projectId,
+  surveyId,
+  sessionId,
+  data: JSON // All the data gathered within session combined
+)
 ```
 
 `SessionReport` are live-updated: it means with each new interaction, it's data are updated
 
 # Repositories of the project
 
-For now (MVP), all repositories allow only creation of records
+For now (MVP), most of repositories allow only creation of records
 
 ```js
 AccountRepository(create)
@@ -467,8 +494,7 @@ ProjectRepository(create)
 SurveyRepository(create)
 QuestionTemplateRepository(create)
 SurveySessionRepository(create)
-SessionQuestionRepository(create)
-SessionAnswerRepository(create)
+SurveyMessageRepository(create, getById)
 SessionReportRepository(create)
 ```
 
@@ -496,6 +522,8 @@ SurveySessionService(
   addQuestionAnswer
   listReports
   getReport
+  getConversationData
+  getConversation
 )
 ```
 
@@ -564,6 +592,13 @@ For now, for mocking purposes combine messages with just an empty newline. If me
 
 # Report shape
 
+This is endpoint-output report shape
+
+In reality, report should be formed from two sources:
+
+1. `getConversation` method of `SurveySessionService`
+2. `getConversationData` method of same service
+
 ```typescript
 {
   conversation: [
@@ -572,8 +607,6 @@ For now, for mocking purposes combine messages with just an empty newline. If me
        author: string // "agent" | "client"
        text: string // Text of question if author agent and answer if author client
        dataId?: string // And id of record in "data" array in same report
-       questionId?: // If author agent
-       answerId?: // If author client
     }
   ],
   data: [

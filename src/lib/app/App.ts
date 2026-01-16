@@ -23,8 +23,7 @@ import {
   SurveysRepository,
   QuestionTemplatesRepository,
   SurveySessionsRepository,
-  SessionQuestionsRepository,
-  SessionAnswersRepository,
+  SessionMessagesRepository,
   SessionReportsRepository,
 } from "../repositories";
 
@@ -45,8 +44,7 @@ export type AppConfig = {
   surveysRepository: SurveysRepository;
   questionTemplatesRepository: QuestionTemplatesRepository;
   surveySessionsRepository: SurveySessionsRepository;
-  sessionQuestionsRepository: SessionQuestionsRepository;
-  sessionAnswersRepository: SessionAnswersRepository;
+  sessionMessagesRepository: SessionMessagesRepository;
   sessionReportsRepository: SessionReportsRepository;
   iamService: IamService;
   inviteService: InviteService;

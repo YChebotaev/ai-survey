@@ -14,8 +14,7 @@ import {
   SurveysRepository,
   QuestionTemplatesRepository,
   SurveySessionsRepository,
-  SessionQuestionsRepository,
-  SessionAnswersRepository,
+  SessionMessagesRepository,
   SessionReportsRepository,
 } from "./src/lib/repositories";
 import {
@@ -125,14 +124,8 @@ export const createApp = async ({
     logger,
   });
 
-  const sessionQuestionsRepository = new SessionQuestionsRepository({
-    tableName: "session_questions",
-    db,
-    logger,
-  });
-
-  const sessionAnswersRepository = new SessionAnswersRepository({
-    tableName: "session_answers",
+  const sessionMessagesRepository = new SessionMessagesRepository({
+    tableName: "session_messages",
     db,
     logger,
   });
@@ -191,8 +184,7 @@ export const createApp = async ({
     surveysRepository,
     questionTemplatesRepository,
     surveySessionsRepository,
-    sessionQuestionsRepository,
-    sessionAnswersRepository,
+    sessionMessagesRepository,
     sessionReportsRepository,
     aiService,
     logger,
@@ -213,8 +205,7 @@ export const createApp = async ({
     surveysRepository,
     questionTemplatesRepository,
     surveySessionsRepository,
-    sessionQuestionsRepository,
-    sessionAnswersRepository,
+    sessionMessagesRepository,
     sessionReportsRepository,
     iamService,
     inviteService,

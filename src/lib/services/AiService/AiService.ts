@@ -6,6 +6,7 @@ import type {
   CombineSuccessWithQuestionArgs,
   CombineFailWithQuestionArgs,
   ExtractDataArgs,
+  DecideNextQuestionArgs,
   AiServiceImpl,
 } from "./types";
 
@@ -43,5 +44,9 @@ export class AiService extends ServiceBase<AiServiceConfig> {
 
   public async extractData(args: ExtractDataArgs): Promise<Record<string, any> | null> {
     return this.impl.extractData(args);
+  }
+
+  public async decideNextQuestion(args: DecideNextQuestionArgs): Promise<{ questionId: number | null; message: string; completed: boolean }> {
+    return this.impl.decideNextQuestion(args);
   }
 }

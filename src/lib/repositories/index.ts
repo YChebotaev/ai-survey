@@ -8,6 +8,5 @@ export * from "./ProjectMembershipsRepository";
 export * from "./SurveysRepository";
 export * from "./QuestionTemplatesRepository";
 export * from "./SurveySessionsRepository";
-export * from "./SessionQuestionsRepository";
-export * from "./SessionAnswersRepository";
+export * from "./SessionMessagesRepository";
 export * from "./SessionReportsRepository";

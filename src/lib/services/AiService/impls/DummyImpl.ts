@@ -5,6 +5,7 @@ import type {
   CombineSuccessWithQuestionArgs,
   CombineFailWithQuestionArgs,
   ExtractDataArgs,
+  DecideNextQuestionArgs,
 } from "../types";
 
 export type DummyImplConfig = {
@@ -213,6 +214,67 @@ export class DummyImpl {
       this.logger.error(error, "Failed to extract data");
 
       return null;
+    }
+  }
+
+  public async decideNextQuestion({
+    clientMessage,
+    allQuestions,
+    currentReportData,
+    lang,
+  }: DecideNextQuestionArgs): Promise<{ questionId: number | null; message: string; completed: boolean }> {
+    try {
+      this.logger.info(
+        { allQuestionsCount: allQuestions.length, dataCount: currentReportData.data.length, lang },
+        "Deciding next question",
+      );
+
+      // Simple logic: find first question without data, in order
+      // This is a dummy implementation - real logic will be in YandexImpl
+      let nextQuestion = null;
+      let previousQuestion = null;
+
+      for (const question of allQuestions) {
+        const hasData = question.collectedData && question.collectedData.length > 0;
+        
+        if (!hasData && nextQuestion == null) {
+          nextQuestion = question;
+        }
+        
+        if (hasData) {
+          previousQuestion = question;
+        }
+      }
+
+      if (nextQuestion == null) {
+        // All questions answered
+        const lastQuestion = allQuestions[allQuestions.length - 1];
+        const completionMessage = lastQuestion?.final 
+          ? lastQuestion.successTemplate 
+          : "Thank you! Survey completed.";
+
+        return {
+          questionId: null,
+          message: completionMessage,
+          completed: true,
+        };
+      }
+
+      // Combine previous success template with next question
+      let message = nextQuestion.questionTemplate;
+      if (previousQuestion && previousQuestion.successTemplate) {
+        message = `${previousQuestion.successTemplate}\n\n${nextQuestion.questionTemplate}`;
+      }
+
+      return {
+        questionId: nextQuestion.id,
+        message,
+        completed: false,
+      };
+    } catch (error) {
+      this.logger.error(error, "Failed to decide next question");
+
+      throw error;
     }
   }
 }

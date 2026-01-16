@@ -1,18 +1,17 @@
 import { type Logger } from "pino";
 import { ServiceBase } from "./ServiceBase";
 import { AiService } from "./AiService";
+import type { SupportedLanguage } from "../types";
 import {
   SurveysRepository,
   QuestionTemplatesRepository,
   SurveySessionsRepository,
-  SessionQuestionsRepository,
-  SessionAnswersRepository,
+  SessionMessagesRepository,
   SessionReportsRepository,
   type Survey,
   type QuestionTemplate,
   type SurveySession,
-  type SessionQuestion,
-  type SessionAnswer,
+  type SessionMessage,
   type SessionReport,
 } from "../repositories";
 
@@ -20,8 +19,7 @@ export type SurveySessionServiceConfig = {
   surveysRepository: SurveysRepository;
   questionTemplatesRepository: QuestionTemplatesRepository;
   surveySessionsRepository: SurveySessionsRepository;
-  sessionQuestionsRepository: SessionQuestionsRepository;
-  sessionAnswersRepository: SessionAnswersRepository;
+  sessionMessagesRepository: SessionMessagesRepository;
   sessionReportsRepository: SessionReportsRepository;
   aiService: AiService;
   logger: Logger;
@@ -46,6 +44,15 @@ export type AddQuestionAnswerArgs = {
   answerData: string;
 };
 
+export type AddClientMessageArgs = {
+  sessionId: number;
+  clientMessage: string;
+};
+
+export type DecideAndAskNextQuestionArgs = {
+  sessionId: number;
+};
+
 export type ListReportsArgs = {
   accountId: number;
   projectId?: number;
@@ -60,8 +67,7 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
   private readonly surveysRepository: SurveysRepository;
   private readonly questionTemplatesRepository: QuestionTemplatesRepository;
   private readonly surveySessionsRepository: SurveySessionsRepository;
-  private readonly sessionQuestionsRepository: SessionQuestionsRepository;
-  private readonly sessionAnswersRepository: SessionAnswersRepository;
+  private readonly sessionMessagesRepository: SessionMessagesRepository;
   private readonly sessionReportsRepository: SessionReportsRepository;
   private readonly aiService: AiService;
 
@@ -69,8 +75,7 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
     surveysRepository,
     questionTemplatesRepository,
     surveySessionsRepository,
-    sessionQuestionsRepository,
-    sessionAnswersRepository,
+    sessionMessagesRepository,
     sessionReportsRepository,
     aiService,
     logger,
@@ -79,8 +84,7 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       surveysRepository,
       questionTemplatesRepository,
       surveySessionsRepository,
-      sessionQuestionsRepository,
-      sessionAnswersRepository,
+      sessionMessagesRepository,
       sessionReportsRepository,
       aiService,
       logger,
@@ -89,8 +93,7 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
     this.surveysRepository = surveysRepository;
     this.questionTemplatesRepository = questionTemplatesRepository;
     this.surveySessionsRepository = surveySessionsRepository;
-    this.sessionQuestionsRepository = sessionQuestionsRepository;
-    this.sessionAnswersRepository = sessionAnswersRepository;
+    this.sessionMessagesRepository = sessionMessagesRepository;
     this.sessionReportsRepository = sessionReportsRepository;
     this.aiService = aiService;
   }
@@ -138,20 +141,8 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         break;
       }
 
-      if (firstQuestion) {
-        const sessionQuestion = await this.sessionQuestionsRepository.create({
-          accountId: survey.accountId,
-          projectId: survey.projectId,
-          surveyId: survey.id,
-          sessionId: session.id,
-          questionId: firstQuestion.id,
-          questionText: firstQuestion.questionTemplate,
-        });
-
-        if (!sessionQuestion) {
-          this.logger.warn({ sessionId: session.id, questionId: firstQuestion.id }, "Failed to create session question");
-        }
-      }
+      // Initial agent message will be created when decideAndAskNextQuestion is called
+      // For now, we just initialize the session
 
       // Initialize report with new structure: conversation and data arrays
       const initialReportData = {
@@ -258,189 +249,14 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
     questionId,
     answerText,
     answerData,
-  }: AddQuestionAnswerArgs): Promise<SessionAnswer> {
+  }: AddQuestionAnswerArgs): Promise<void> {
     try {
-      this.logger.info({ sessionId, questionId }, "Adding question answer");
+      this.logger.info({ sessionId, questionId }, "Adding question answer (deprecated - use addClientMessage instead)");
 
-      const session = await this.surveySessionsRepository.getById(sessionId);
-
-      if (!session) {
-        throw new Error(`Session with id ${sessionId} not found`);
-      }
-
-      const answer = await this.sessionAnswersRepository.create({
-        accountId: session.accountId,
-        projectId: session.projectId,
-        surveyId: session.surveyId,
-        sessionId: session.id,
-        questionId,
-        answerText,
-        answerData,
-      });
-
-      if (!answer) {
-        throw new Error("Failed to create session answer");
-      }
-
-      const sessionState = JSON.parse(session.sessionState);
-      sessionState.currentOrder += 1;
-
-      await this.surveySessionsRepository.updateSessionState(
-        sessionId,
-        JSON.stringify(sessionState),
-      );
-
-      const report = await this.sessionReportsRepository.findBySessionId(sessionId);
-
-      if (report) {
-        const questionTemplate = await this.questionTemplatesRepository.getById(questionId);
-        
-        if (questionTemplate) {
-          const reportData = JSON.parse(report.data);
-          
-          // Ensure report has the new structure
-          if (!reportData.conversation) {
-            reportData.conversation = [];
-          }
-          if (!reportData.data) {
-            reportData.data = [];
-          }
-
-          const extractedData = JSON.parse(answerData);
-          
-          // Get all question templates to find types for each dataKey
-          const session = await this.surveySessionsRepository.getById(sessionId);
-          if (!session) {
-            throw new Error(`Session with id ${sessionId} not found`);
-          }
-          const allQuestionTemplates = await this.questionTemplatesRepository.findBySurveyId(session.surveyId);
-          
-          // Helper to generate random IDs
-          const generateId = (): string => {
-            return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-          };
-
-          // Accept "none", "no", "нет", "нет проблем" as valid values (not null)
-          const isNoneValue = (val: any): boolean => {
-            if (typeof val === "string") {
-              const lower = val.toLowerCase();
-              return (
-                lower === "none" ||
-                lower === "no" ||
-                lower === "нет" ||
-                lower.includes("нет проблем") ||
-                lower.includes("no problems")
-              );
-            }
-            return false;
-          };
-
-          // Store ALL extracted data in the new format
-          // Determine if data is "freeform" (direct answer to current question) or "extracted" (AI extracted from other questions)
-          const currentQuestionDataKey = questionTemplate.dataKey;
-          
-          // #region agent log
-          this.logger.info({ sessionId, questionId, currentQuestionDataKey, extractedDataKeys: Object.keys(extractedData), extractedData, answerText }, "Storing extracted data");
-          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:345',message:'Storing extracted data',data:{sessionId,questionId,currentQuestionDataKey,extractedDataKeys:Object.keys(extractedData),extractedData,answerText},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
-          
-          for (const [key, value] of Object.entries(extractedData)) {
-            // Store value if it's not null, or if it's a valid "none" string value
-            if (value != null || isNoneValue(value)) {
-              if (!(typeof value === "object" && value != null && Object.keys(value).length === 0)) {
-                // Determine data record type:
-                // - "freeform": if this is the dataKey for the current question being answered (direct answer)
-                // - "extracted": if this is a different dataKey (AI extracted from a message not specifically for this question)
-                const isCurrentQuestion = key === currentQuestionDataKey;
-                const dataRecordType = isCurrentQuestion ? "freeform" : "extracted";
-                
-                if (dataRecordType === "freeform") {
-                  // For "freeform": ensure uniqueness - update existing or create new
-                  const existingDataIndex = reportData.data.findIndex(
-                    (d: any) => d.key === key && d.type === "freeform"
-                  );
-                  
-                  if (existingDataIndex >= 0) {
-                    // Update existing freeform entry (should be unique per key)
-                    reportData.data[existingDataIndex].value = String(value);
-                  } else {
-                    // Create new freeform entry
-                    const dataId = generateId();
-                    reportData.data.push({
-                      id: dataId,
-                      key,
-                      value: String(value),
-                      type: "freeform",
-                    });
-                  }
-                } else {
-                  // For "extracted": always create new entry (allow duplicates with same key but different ids)
-                  const dataId = generateId();
-                  reportData.data.push({
-                    id: dataId,
-                    key,
-                    value: String(value),
-                    type: "extracted",
-                  });
-                  // #region agent log
-                  this.logger.info({ sessionId, key, value, dataId, dataArrayLength: reportData.data.length, isCurrentQuestion: key === currentQuestionDataKey }, "Created extracted data entry");
-                  fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:384',message:'Created extracted data entry',data:{sessionId,key,value,dataId,dataArrayLength:reportData.data.length,isCurrentQuestion:key===currentQuestionDataKey},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'B'})}).catch(()=>{});
-                  // #endregion
-                }
-              }
-            }
-          }
-
-          // Add client answer to conversation
-          const answerConversationId = generateId();
-          // Find data entries for all keys that were extracted
-          // For freeform, find the unique entry; for extracted, find the most recent one
-          const answerDataIds: string[] = [];
-          for (const [key, value] of Object.entries(extractedData)) {
-            if (value != null || isNoneValue(value)) {
-              if (!(typeof value === "object" && value != null && Object.keys(value).length === 0)) {
-                const isCurrentQuestion = key === currentQuestionDataKey;
-                let dataEntry;
-                
-                if (isCurrentQuestion) {
-                  // For freeform, find the unique entry
-                  dataEntry = reportData.data.find((d: any) => d.key === key && d.type === "freeform");
-                } else {
-                  // For extracted, find the most recent one (last in array)
-                  const extractedEntries = reportData.data.filter((d: any) => d.key === key && d.type === "extracted");
-                  dataEntry = extractedEntries[extractedEntries.length - 1];
-                }
-                
-                if (dataEntry) {
-                  answerDataIds.push(dataEntry.id);
-                }
-              }
-            }
-          }
-          
-          reportData.conversation.push({
-            id: answerConversationId,
-            author: "client",
-            text: answerText,
-            dataId: answerDataIds.length > 0 ? answerDataIds[0] : undefined, // Primary dataId (first one)
-            answerId: answer.id,
-          });
-
-          await this.sessionReportsRepository.updateBySessionId(
-            sessionId,
-            JSON.stringify(reportData),
-          );
-          
-          // #region agent log
-          this.logger.info({ sessionId, dataArrayLength: reportData.data.length, dataEntries: reportData.data.map((d: any) => ({ key: d.key, type: d.type, value: d.value })) }, "Report updated after storing data");
-          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:438',message:'Report updated after storing data',data:{sessionId,dataArrayLength:reportData.data.length,dataEntries:reportData.data.map((d:any)=>({key:d.key,type:d.type,value:d.value}))},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-        }
-      }
-
-      this.logger.info({ answerId: answer.id }, "Question answer added");
-
-      return answer;
+      // This method is deprecated - use addClientMessage instead
+      // Keeping for backward compatibility but it's a no-op now
+      // The actual work is done in addClientMessage
+      this.logger.warn({ sessionId, questionId }, "addQuestionAnswer is deprecated, use addClientMessage instead");
     } catch (error) {
       this.logger.error(error, "Failed to add question answer");
 
@@ -587,22 +403,22 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
         }
       }
 
-      // Fallback to old method using session questions and answers
-      const questions = await this.sessionQuestionsRepository.findBySessionId(sessionId);
-      const answers = await this.sessionAnswersRepository.findBySessionId(sessionId);
+      // Fallback to old method using session messages
+      const messages = await this.sessionMessagesRepository.findBySessionId(sessionId);
 
       const conversation: Array<{ question: string; answer: string }> = [];
+      let currentQuestion: string | null = null;
 
-      // Match questions and answers by order (they should be in chronological order)
-      for (let i = 0; i < questions.length; i++) {
-        const question = questions[i];
-        const answer = answers[i];
-
-        if (question && answer) {
+      // Match agent and client messages
+      for (const msg of messages) {
+        if (msg.author === "agent") {
+          currentQuestion = msg.text;
+        } else if (msg.author === "client" && currentQuestion) {
           conversation.push({
-            question: question.questionText,
-            answer: answer.answerText,
+            question: currentQuestion,
+            answer: msg.text,
           });
+          currentQuestion = null;
         }
       }
 
@@ -757,6 +573,341 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       );
     } catch (error) {
       this.logger.error(error, "Failed to update session order");
+
+      throw error;
+    }
+  }
+
+  public async addClientMessage({
+    sessionId,
+    clientMessage,
+  }: AddClientMessageArgs): Promise<{ partialReport: { conversation: any[]; data: any[] }; fullReport: { conversation: any[]; data: any[] } }> {
+    try {
+      this.logger.info({ sessionId }, "Adding client message");
+
+      const session = await this.surveySessionsRepository.getById(sessionId);
+
+      if (!session) {
+        throw new Error(`Session with id ${sessionId} not found`);
+      }
+
+      const survey = await this.surveysRepository.getById(session.surveyId);
+      if (!survey) {
+        throw new Error(`Survey with id ${session.surveyId} not found`);
+      }
+
+      const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
+
+      // Get all questions to extract all possible dataKeys
+      const allQuestionTemplates = await this.questionTemplatesRepository.findBySurveyId(session.surveyId);
+      const allDataKeys = allQuestionTemplates.map((qt) => qt.dataKey);
+      const allQuestionTypes = allQuestionTemplates.reduce(
+        (acc, qt) => {
+          acc[qt.dataKey] = qt.type;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
+
+      // Get current report data
+      const currentReportData = await this.getCurrentReportData(sessionId);
+      if (!currentReportData) {
+        throw new Error(`Report not found for session ${sessionId}`);
+      }
+
+      // Get conversation history
+      const previousConversation = await this.getConversationHistory(sessionId);
+
+      // Extract data using AI - extract ALL possible data from the message
+      // We need to determine which question was "current" - this is the last agent message
+      // Get it from the current report data (which should have the agent message we just added)
+      let currentQuestionDataKey = allDataKeys[0];
+      
+      // Find the last agent message in the current report's conversation
+      const lastAgentMsg = (currentReportData.conversation || [])
+        .filter((m: any) => m.author === "agent")
+        .pop();
+      
+      if (lastAgentMsg?.questionId) {
+        const questionTemplate = await this.questionTemplatesRepository.getById(lastAgentMsg.questionId);
+        if (questionTemplate) {
+          currentQuestionDataKey = questionTemplate.dataKey;
+        }
+      }
+      const safeCurrentQuestionDataKey = currentQuestionDataKey || allDataKeys[0];
+      const safeCurrentQuestionType = (safeCurrentQuestionDataKey && allQuestionTypes[safeCurrentQuestionDataKey]) || "freeform";
+
+      const extractDataArgs: {
+        text: string;
+        currentQuestionDataKey: string;
+        currentQuestionType: string;
+        allDataKeys: string[];
+        allQuestionTypes: Record<string, string>;
+        lang: SupportedLanguage;
+        currentDataState?: Record<string, any>;
+        previousConversation?: Array<{ question: string; answer: string }>;
+      } = {
+        text: clientMessage,
+        currentQuestionDataKey: safeCurrentQuestionDataKey as string,
+        currentQuestionType: safeCurrentQuestionType as string,
+        allDataKeys,
+        allQuestionTypes,
+        lang,
+      };
+
+      if (currentReportData._flatData) {
+        extractDataArgs.currentDataState = currentReportData._flatData;
+      }
+
+      if (previousConversation.length > 0) {
+        extractDataArgs.previousConversation = previousConversation;
+      }
+
+      const extractedData = await this.aiService.extractData(extractDataArgs);
+
+      if (!extractedData) {
+        throw new Error("Failed to extract data from client message");
+      }
+
+      // Create partial report from extracted data
+      const generateId = (): string => {
+        return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      };
+
+      const partialReport = {
+        conversation: [{
+          id: generateId(),
+          author: "client",
+          text: clientMessage,
+        }],
+        data: [] as Array<{ id: string; key: string; value: string; type: string }>,
+      };
+
+      // Helper to check if value is "none"
+      const isNoneValue = (val: any): boolean => {
+        if (typeof val === "string") {
+          const lower = val.toLowerCase();
+          return (
+            lower === "none" ||
+            lower === "no" ||
+            lower === "нет" ||
+            lower.includes("нет проблем") ||
+            lower.includes("no problems")
+          );
+        }
+        return false;
+      };
+
+      // Store extracted data in partial report
+      for (const [key, value] of Object.entries(extractedData)) {
+        if (value != null || isNoneValue(value)) {
+          if (!(typeof value === "object" && value != null && Object.keys(value).length === 0)) {
+            // Determine type: "freeform" if this is the current question's dataKey, "extracted" otherwise
+            const isCurrentQuestion = key === safeCurrentQuestionDataKey;
+            const dataRecordType = isCurrentQuestion ? "freeform" : "extracted";
+
+            if (dataRecordType === "freeform") {
+              // For "freeform": ensure uniqueness - update existing or create new
+              const existingDataIndex = partialReport.data.findIndex(
+                (d) => d.key === key && d.type === "freeform"
+              );
+
+              if (existingDataIndex >= 0 && partialReport.data[existingDataIndex]) {
+                partialReport.data[existingDataIndex]!.value = String(value);
+              } else {
+                const dataId = generateId();
+                partialReport.data.push({
+                  id: dataId,
+                  key,
+                  value: String(value),
+                  type: "freeform",
+                });
+              }
+            } else {
+              // For "extracted": always create new entry
+              const dataId = generateId();
+              partialReport.data.push({
+                id: dataId,
+                key,
+                value: String(value),
+                type: "extracted",
+              });
+            }
+          }
+        }
+      }
+
+      // Merge partial report into full report
+      const fullReport = {
+        conversation: [...(currentReportData.conversation || []), ...partialReport.conversation],
+        data: [...(currentReportData.data || [])],
+      };
+
+      // Merge data: for "freeform", update existing; for "extracted", add new
+      for (const partialDataEntry of partialReport.data) {
+        if (partialDataEntry.type === "freeform") {
+          const existingIndex = fullReport.data.findIndex(
+            (d: any) => d.key === partialDataEntry.key && d.type === "freeform"
+          );
+          if (existingIndex >= 0) {
+            fullReport.data[existingIndex] = partialDataEntry;
+          } else {
+            fullReport.data.push(partialDataEntry);
+          }
+        } else {
+          fullReport.data.push(partialDataEntry);
+        }
+      }
+
+      // Save client message to SessionMessage
+      const lastMessage = await this.sessionMessagesRepository.getLastMessageBySessionId(sessionId);
+      const nextOrder = lastMessage ? lastMessage.order + 1 : 1;
+
+      await this.sessionMessagesRepository.create({
+        accountId: session.accountId,
+        projectId: session.projectId,
+        surveyId: session.surveyId,
+        sessionId: session.id,
+        order: nextOrder,
+        partialReport: JSON.stringify(partialReport),
+        author: "client",
+        text: clientMessage,
+      });
+
+      // Update report
+      await this.sessionReportsRepository.updateBySessionId(
+        sessionId,
+        JSON.stringify(fullReport),
+      );
+
+      this.logger.info({ sessionId, partialDataCount: partialReport.data.length }, "Client message added");
+
+      return { partialReport, fullReport };
+    } catch (error) {
+      this.logger.error(error, "Failed to add client message");
+
+      throw error;
+    }
+  }
+
+  public async decideAndAskNextQuestion({
+    sessionId,
+  }: DecideAndAskNextQuestionArgs): Promise<{ questionId: number | null; message: string; completed: boolean }> {
+    try {
+      this.logger.info({ sessionId }, "Deciding and asking next question");
+
+      const session = await this.surveySessionsRepository.getById(sessionId);
+      if (!session) {
+        throw new Error(`Session with id ${sessionId} not found`);
+      }
+
+      const survey = await this.surveysRepository.getById(session.surveyId);
+      if (!survey) {
+        throw new Error(`Survey with id ${session.surveyId} not found`);
+      }
+
+      const lang = (survey.lang === "en" || survey.lang === "ru") ? survey.lang : "en";
+
+      // Get all questions
+      const allQuestionTemplates = await this.questionTemplatesRepository.findBySurveyId(session.surveyId);
+      const sortedQuestions = allQuestionTemplates.sort((a, b) => a.order - b.order);
+
+      // Get current report data
+      const currentReportData = await this.getCurrentReportData(sessionId);
+      if (!currentReportData) {
+        throw new Error(`Report not found for session ${sessionId}`);
+      }
+
+      // Build question context with collected data
+      const questionsContext = sortedQuestions.map((qt) => {
+        // Find data collected for this question's dataKey
+        const collectedData = (currentReportData.data || []).filter(
+          (d: any) => d.key === qt.dataKey
+        );
+
+        return {
+          id: qt.id,
+          order: qt.order,
+          dataKey: qt.dataKey,
+          questionTemplate: qt.questionTemplate,
+          successTemplate: qt.successTemplate,
+          failTemplate: qt.failTemplate,
+          type: qt.type,
+          final: qt.final,
+          collectedData: collectedData.length > 0 ? collectedData : undefined,
+        };
+      });
+
+      // Get last client message for context
+      const messages = await this.sessionMessagesRepository.findBySessionId(sessionId);
+      const lastClientMessage = messages.filter(m => m.author === "client").pop()?.text || "";
+
+      // Use AI to decide next question
+      const decision = await this.aiService.decideNextQuestion({
+        clientMessage: lastClientMessage,
+        allQuestions: questionsContext,
+        currentReportData: {
+          conversation: currentReportData.conversation || [],
+          data: currentReportData.data || [],
+        },
+        lang,
+      });
+
+      // Save agent message if there's a question to ask
+      if (decision.questionId != null) {
+        const lastMessage = await this.sessionMessagesRepository.getLastMessageBySessionId(sessionId);
+        const nextOrder = lastMessage ? lastMessage.order + 1 : 0; // First message is order 0
+
+        // Add agent message to report conversation BEFORE saving (so addClientMessage can find it)
+        const generateId = (): string => {
+          return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        };
+
+        const agentMessageId = generateId();
+        const updatedReportData = {
+          ...currentReportData,
+          conversation: [
+            ...(currentReportData.conversation || []),
+            {
+              id: agentMessageId,
+              author: "agent",
+              text: decision.message,
+              questionId: decision.questionId,
+            },
+          ],
+        };
+
+        // Update report with agent message
+        await this.sessionReportsRepository.updateBySessionId(
+          sessionId,
+          JSON.stringify(updatedReportData),
+        );
+
+        await this.sessionMessagesRepository.create({
+          accountId: session.accountId,
+          projectId: session.projectId,
+          surveyId: session.surveyId,
+          sessionId: session.id,
+          order: nextOrder,
+          partialReport: JSON.stringify(updatedReportData),
+          author: "agent",
+          text: decision.message,
+        });
+      }
+
+      // If completed, end session
+      if (decision.completed) {
+        await this.endSession({ sessionId });
+      }
+
+      this.logger.info(
+        { sessionId, questionId: decision.questionId, completed: decision.completed },
+        "Next question decided",
+      );
+
+      return decision;
+    } catch (error) {
+      this.logger.error(error, "Failed to decide and ask next question");
 
       throw error;
     }

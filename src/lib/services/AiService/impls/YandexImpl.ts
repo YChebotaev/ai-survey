@@ -531,6 +531,10 @@ Text: ${text}`;
             { extractedDataAfterFallback: extractedData },
             "Completed fallback pattern matching",
           );
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'YandexImpl.ts:530',message:'Completed fallback pattern matching',data:{extractedDataAfterFallback:extractedData,text,currentQuestionDataKey,allDataKeys},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
         }
 
         // Post-process: if user said "no problems" but AI extracted null, convert to "none"
@@ -570,9 +574,13 @@ Text: ${text}`;
         }
 
         this.logger.info(
-          { text, currentQuestionDataKey, allDataKeys, extractedData },
+          { text, currentQuestionDataKey, currentQuestionType, allDataKeys, extractedData },
           "Data extracted",
         );
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'YandexImpl.ts:495',message:'Data extracted from AI',data:{text,currentQuestionDataKey,currentQuestionType,allDataKeys,extractedData},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
 
         return extractedData;
       } catch (parseError) {

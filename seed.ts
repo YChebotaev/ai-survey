@@ -1,4 +1,5 @@
 import pino from "pino";
+import type { Knex } from "knex";
 import { createDb } from "./index";
 import {
   AccountsRepository,
@@ -17,11 +18,12 @@ const EXTERNAL_ID_EN = "demo-survey-en";
 const EXTERNAL_ID_RU = "demo-survey-ru";
 const EXTERNAL_ID_SCRUM_RU = "demo-scrum-daily-ru";
 
-const seed = async () => {
+export const seed = async (providedDb?: Knex) => {
   try {
     logger.info("Starting seed process");
 
-    const db = await createDb();
+    const db = providedDb || (await createDb());
+    const shouldDestroyDb = !providedDb;
     logger.info("Database initialized");
 
     // Check if surveys already exist
@@ -47,7 +49,9 @@ const seed = async () => {
         },
         "All surveys already exist, skipping seed",
       );
-      await db.destroy();
+      if (shouldDestroyDb) {
+        await db.destroy();
+      }
       return;
     }
 
@@ -304,11 +308,19 @@ const seed = async () => {
       "Demo surveys are ready",
     );
 
-    await db.destroy();
+    if (shouldDestroyDb) {
+      await db.destroy();
+    }
   } catch (error: any) {
     logger.error(error, "Seed failed");
-    process.exit(1);
+    if (!providedDb) {
+      process.exit(1);
+    }
+    throw error;
   }
 };
 
-seed();
+// Only run seed if this file is executed directly (not imported)
+if (require.main === module) {
+  seed();
+}

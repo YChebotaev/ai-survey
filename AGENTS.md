@@ -603,3 +603,31 @@ In this scrum scenario if user answer questions one by one, his answers goes as 
 But if client provides all necessary data in first message, all of the records will be type: "extracted" and may be duplicated keys if user have much to say
 
 In case if user provides yesterdayWork and todayPlan in first reply, then waits for question about roadblock and ansers it in the second reply, the first two data should be type extracted and last (roadblock) should be freeform
+
+# Chat testing scenarios
+
+Only replies of client are provided:
+
+Scenario 1 (simplest possible):
+1. KCD-12
+2. KCD-14
+3. No, thanks
+
+Scenario 2 (not simple):
+1. Yesterday KCD-12
+2. Will continue
+3. No, thanks
+
+Scenario 3 (tough):
+1. Today KCD-12
+2. Will continue
+3. No, thanks
+
+Scenario 4:
+1. KCD-12 and 14
+2. KCD-15
+3. No, thanks
+
+Scenario 5 (skipping):
+1. Today KCD-12, tommorow KCD-13
+2. No, thanks

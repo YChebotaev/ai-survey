@@ -340,7 +340,8 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
           const currentQuestionDataKey = questionTemplate.dataKey;
           
           // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:340',message:'Storing extracted data',data:{sessionId,questionId,currentQuestionDataKey,extractedDataKeys:Object.keys(extractedData),extractedData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          this.logger.info({ sessionId, questionId, currentQuestionDataKey, extractedDataKeys: Object.keys(extractedData), extractedData, answerText }, "Storing extracted data");
+          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:345',message:'Storing extracted data',data:{sessionId,questionId,currentQuestionDataKey,extractedDataKeys:Object.keys(extractedData),extractedData,answerText},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
           
           for (const [key, value] of Object.entries(extractedData)) {
@@ -382,7 +383,8 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
                     type: "extracted",
                   });
                   // #region agent log
-                  fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:379',message:'Created extracted data entry',data:{sessionId,key,value,dataId,dataArrayLength:reportData.data.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  this.logger.info({ sessionId, key, value, dataId, dataArrayLength: reportData.data.length, isCurrentQuestion: key === currentQuestionDataKey }, "Created extracted data entry");
+                  fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:384',message:'Created extracted data entry',data:{sessionId,key,value,dataId,dataArrayLength:reportData.data.length,isCurrentQuestion:key===currentQuestionDataKey},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'B'})}).catch(()=>{});
                   // #endregion
                 }
               }
@@ -430,7 +432,8 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
           );
           
           // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:420',message:'Report updated after storing data',data:{sessionId,dataArrayLength:reportData.data.length,dataEntries:reportData.data.map((d:any)=>({key:d.key,type:d.type,value:d.value}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          this.logger.info({ sessionId, dataArrayLength: reportData.data.length, dataEntries: reportData.data.map((d: any) => ({ key: d.key, type: d.type, value: d.value })) }, "Report updated after storing data");
+          fetch('http://127.0.0.1:7246/ingest/0478813b-8f08-4062-96b1-32f6e026bdfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SurveySessionService.ts:438',message:'Report updated after storing data',data:{sessionId,dataArrayLength:reportData.data.length,dataEntries:reportData.data.map((d:any)=>({key:d.key,type:d.type,value:d.value}))},timestamp:Date.now(),sessionId:'debug-session',runId:'test-scenarios',hypothesisId:'C'})}).catch(()=>{});
           // #endregion
         }
       }

@@ -41,7 +41,13 @@ export class DemoPlugin extends BaseFastifyPlugin<DemoPluginOptions> {
 
     const serveHtml = async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const html = readFileSync(htmlPath, "utf-8");
+        let html = readFileSync(htmlPath, "utf-8");
+        
+        // Replace absolute paths with protocol-relative paths to avoid mixed content issues
+        // Protocol-relative URLs (//example.com/path) use the same protocol as the page
+        const host = request.headers.host || "";
+        html = html.replace(/href="\/demo\//g, `href="//${host}/demo/`);
+        html = html.replace(/src="\/demo\//g, `src="//${host}/demo/`);
 
         return reply.type("text/html").code(200).send(html);
       } catch (error) {

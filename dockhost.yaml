@@ -2,7 +2,7 @@ version: 1
 project: autoscrum-bot
 containers:
   ai-survey:
-    image: ghcr.io/autoscrum-bot/ai-survey
+    image: ghcr.io/ychebotaev/ai-survey
     resources:
       memory: 512Mib
     ports:

@@ -37,13 +37,6 @@ export type GetNextQuestionArgs = {
   sessionId: number;
 };
 
-export type AddQuestionAnswerArgs = {
-  sessionId: number;
-  questionId: number;
-  answerText: string;
-  answerData: string;
-};
-
 export type AddClientMessageArgs = {
   sessionId: number;
   clientMessage: string;
@@ -239,26 +232,6 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       return nextQuestion || null;
     } catch (error) {
       this.logger.error(error, "Failed to get next question");
-
-      throw error;
-    }
-  }
-
-  public async addQuestionAnswer({
-    sessionId,
-    questionId,
-    answerText,
-    answerData,
-  }: AddQuestionAnswerArgs): Promise<void> {
-    try {
-      this.logger.info({ sessionId, questionId }, "Adding question answer (deprecated - use addClientMessage instead)");
-
-      // This method is deprecated - use addClientMessage instead
-      // Keeping for backward compatibility but it's a no-op now
-      // The actual work is done in addClientMessage
-      this.logger.warn({ sessionId, questionId }, "addQuestionAnswer is deprecated, use addClientMessage instead");
-    } catch (error) {
-      this.logger.error(error, "Failed to add question answer");
 
       throw error;
     }
@@ -480,55 +453,6 @@ export class SurveySessionService extends ServiceBase<SurveySessionServiceConfig
       this.logger.error(error, "Failed to get current report data");
 
       return null;
-    }
-  }
-
-  public async addAgentQuestionToConversation({
-    sessionId,
-    questionId,
-    questionText,
-  }: {
-    sessionId: number;
-    questionId: number;
-    questionText: string;
-  }): Promise<void> {
-    try {
-      const report = await this.sessionReportsRepository.findBySessionId(sessionId);
-
-      if (!report) {
-        return;
-      }
-
-      const reportData = JSON.parse(report.data);
-      
-      // Ensure report has the new structure
-      if (!reportData.conversation) {
-        reportData.conversation = [];
-      }
-      if (!reportData.data) {
-        reportData.data = [];
-      }
-
-      // Helper to generate random IDs
-      const generateId = (): string => {
-        return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-      };
-
-      // Add agent question to conversation
-      const questionConversationId = generateId();
-      reportData.conversation.push({
-        id: questionConversationId,
-        author: "agent",
-        text: questionText,
-        questionId,
-      });
-
-      await this.sessionReportsRepository.updateBySessionId(
-        sessionId,
-        JSON.stringify(reportData),
-      );
-    } catch (error) {
-      this.logger.error(error, "Failed to add agent question to conversation");
     }
   }
 

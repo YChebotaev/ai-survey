@@ -53,6 +53,8 @@
     sendButton.disabled = !enabled;
     if (enabled) {
       messageInput.focus();
+      // Reset height when re-enabled
+      adjustTextareaHeight();
     }
   }
 
@@ -105,6 +107,9 @@
 
     addMessage(text, true);
     messageInput.value = '';
+    // Reset textarea height after clearing
+    messageInput.style.height = 'auto';
+    adjustTextareaHeight();
     setInputEnabled(false);
 
     try {
@@ -145,13 +150,35 @@
     }
   }
 
-  sendButton.addEventListener('click', sendMessage);
+  // Autogrow functionality
+  function adjustTextareaHeight() {
+    const textarea = messageInput;
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto';
+    // Calculate new height based on content
+    const newHeight = Math.min(textarea.scrollHeight, 200); // Max height of 200px
+    textarea.style.height = newHeight + 'px';
+  }
 
-  messageInput.addEventListener('keypress', function(event) {
+  // Adjust height on input
+  messageInput.addEventListener('input', adjustTextareaHeight);
+
+  // Handle Enter and Shift+Enter
+  messageInput.addEventListener('keydown', function(event) {
     if (event.key === 'Enter' && !messageInput.disabled) {
-      sendMessage();
+      if (event.shiftKey) {
+        // Shift+Enter: allow new line (default behavior)
+        // Height will adjust automatically via input event
+        return;
+      } else {
+        // Enter alone: send message
+        event.preventDefault();
+        sendMessage();
+      }
     }
   });
+
+  sendButton.addEventListener('click', sendMessage);
 
   async function viewReport() {
     if (!sessionId) {

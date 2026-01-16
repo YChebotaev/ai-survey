@@ -25,6 +25,14 @@ RUN npx tsc --project tsconfig.build.json && \
     test -d dist/src/lib/migrations && \
     echo "TypeScript compilation successful"
 
+# Copy static files for demo plugin (HTML, CSS, JS)
+# These files are not compiled by TypeScript but are needed at runtime
+RUN mkdir -p dist/src/lib/app/fastify/plugins/demo/styles && \
+    mkdir -p dist/src/lib/app/fastify/plugins/demo/scripts && \
+    cp src/lib/app/fastify/plugins/demo/index.html dist/src/lib/app/fastify/plugins/demo/ && \
+    cp src/lib/app/fastify/plugins/demo/styles/style.css dist/src/lib/app/fastify/plugins/demo/styles/ && \
+    cp src/lib/app/fastify/plugins/demo/scripts/script.js dist/src/lib/app/fastify/plugins/demo/scripts/
+
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && \
     chown -R nodejs:nodejs /app

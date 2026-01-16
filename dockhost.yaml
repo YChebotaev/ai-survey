@@ -1,0 +1,33 @@
+version: 1
+project: autoscrum-bot
+containers:
+  ai-survey:
+    image: ghcr.io/autoscrum-bot/ai-survey
+    resources:
+      memory: 512Mib
+    ports:
+      - 3000
+    volumes:
+      - name: ai-survey-data
+        mountPath: /app/data
+    variables:
+      HOST: 0.0.0.0
+      PORT: 3000
+      AI_MODEL: $AI_MODEL
+      YANDEX_CLOUD_FOLDER: $YANDEX_CLOUD_FOLDER
+      YANDEX_CLOUD_API_KEY: $YANDEX_CLOUD_API_KEY
+      YANDEX_CLOUD_MODEL: $YANDEX_CLOUD_MODEL
+volumes:
+  ai-survey-data:
+    type: ssd
+    size: 1Gib
+network:
+  services:
+    ai-survey:
+      container: ai-survey
+      ports:
+        - 3000
+  ports:
+    ai-survey-port:
+      service: ai-survey
+      port: 3000

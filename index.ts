@@ -1,5 +1,5 @@
 import path from "path";
-import { mkdirSync } from "fs";
+import { mkdirSync, existsSync } from "fs";
 import type { Logger } from "pino";
 import { App } from "./src/lib/app/App";
 import knex, { type Knex } from "knex";
@@ -50,7 +50,15 @@ export const createDb = async () => {
     // Enable foreign keys for SQLite
     await k.raw("PRAGMA foreign_keys = ON");
 
-    const migrationDir = path.join(process.cwd(), "src/lib/migrations");
+    // In production (compiled), migrations are in dist/src/lib/migrations
+    // In development, they're in src/lib/migrations
+    const distMigrationsPath = path.join(process.cwd(), "dist/src/lib/migrations");
+    const srcMigrationsPath = path.join(process.cwd(), "src/lib/migrations");
+    const migrationDir = existsSync(distMigrationsPath) ? distMigrationsPath : srcMigrationsPath;
+    
+    if (!existsSync(migrationDir)) {
+      throw new Error(`Migration directory not found: ${migrationDir}`);
+    }
     
     // Use migrate.latest() to run ALL pending migrations (not just one)
     await k.migrate.latest({
@@ -59,7 +67,9 @@ export const createDb = async () => {
 
     return k;
   } catch (error: any) {
-    throw new Error(`Failed to initialize database at ${dbPath}: ${error.message}`);
+    const errorMessage = error?.message || String(error);
+    const errorStack = error?.stack || "";
+    throw new Error(`Failed to initialize database at ${dbPath}: ${errorMessage}${errorStack ? `\n${errorStack}` : ""}`);
   }
 };
 
